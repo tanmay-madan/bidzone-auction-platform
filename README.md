@@ -8,16 +8,24 @@ control.
 transactions and row-level locking (`SELECT ... FOR UPDATE`), with a
 planned optimistic-vs-pessimistic concurrency benchmark.
 
-## Status: Phase 1 — Project Setup
+## Status: Fully working MVP
 
-This phase only proves the three pieces of the stack are wired together:
+Everything below is implemented and tested end-to-end:
 
-- React (Vite) frontend renders a working homepage.
-- Express backend runs and exposes a health-check endpoint.
-- The backend reports whether it can currently reach PostgreSQL.
+- Register / login (JWT + bcrypt)
+- Create, list, view, edit, delete auctions
+- Browse with search + sort, My Auctions, My Bids
+- **Concurrency-safe bidding** via PostgreSQL `SELECT ... FOR UPDATE`
+  inside a transaction — verified with a scripted test that fires 50
+  simultaneous identical bids and confirms exactly 1 is accepted, 49
+  are rejected, and no bid is lost
+- Server-clock-authoritative closing time (frontend countdown is
+  cosmetic only)
 
-No authentication, bidding, or concurrency logic exists yet — that comes
-in later phases.
+Not implemented (intentionally, per the brief's phased priority —
+optional/advanced, build only if you want to extend it further):
+WebSocket live updates, anti-sniping, optimistic-concurrency
+benchmarking, proxy bidding.
 
 ## Project structure
 
@@ -69,6 +77,27 @@ npm run dev
 The app starts on `http://localhost:5173`. The homepage shows a
 "Backend connected" indicator once both servers are running.
 
+### 4. Run the concurrency test
+
+With the backend running (and its `.env` pointed at your DB):
+
+```bash
+cd backend
+node scripts/concurrency-test.js
+```
+
+Expected output:
+
+```text
+Sent 50 concurrent bids in <N>ms
+Accepted: 1
+Rejected: 49
+Final highest bid in DB: 11000.00
+Database consistent: YES
+
+PASSED — exactly one bid committed, no lost updates.
+```
+
 ## Tech stack
 
 - **Frontend:** React, React Router, Axios, Tailwind CSS
@@ -78,12 +107,13 @@ The app starts on `http://localhost:5173`. The homepage shows a
 ## Roadmap
 
 1. ~~Project setup~~ ✅
-2. Basic backend (schema + health check) ✅
-3. Authentication (register, login, JWT)
-4. Auction CRUD
-5. Basic bidding
-6. Concurrency-safe bidding (`SELECT FOR UPDATE`) ⭐
-7. Frontend pages (browse, details, create, my auctions/bids)
-8. Frontend–backend integration
-9. Concurrency and consistency test harness
-10. Advanced: optimistic concurrency benchmark, WebSockets, anti-sniping
+2. ~~Basic backend (schema + health check)~~ ✅
+3. ~~Authentication (register, login, JWT)~~ ✅
+4. ~~Auction CRUD~~ ✅
+5. ~~Basic bidding~~ ✅
+6. ~~Concurrency-safe bidding (`SELECT FOR UPDATE`)~~ ✅ ⭐
+7. ~~Frontend pages (browse, details, create, my auctions/bids)~~ ✅
+8. ~~Frontend–backend integration~~ ✅
+9. ~~Concurrency test harness~~ ✅ (`backend/scripts/concurrency-test.js`)
+10. Advanced (optional, not built): optimistic concurrency benchmark,
+    WebSockets, anti-sniping, proxy bidding
