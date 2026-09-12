@@ -1,0 +1,4 @@
+-- Seed data for local development.
+-- Left empty for Phase 1 — populated once auth and auction creation
+-- exist, so seed rows use real bcrypt hashes and valid timestamps
+-- rather than placeholder values.
