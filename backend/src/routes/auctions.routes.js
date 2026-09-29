@@ -14,7 +14,9 @@ const router = Router();
 
 router.get("/auctions", listAuctions);
 router.get("/my-auctions", requireAuth, myAuctions);
+router.get("/auctions/mine", requireAuth, myAuctions); // alias per spec
 router.get("/my-bids", requireAuth, myBids);
+router.get("/bids/mine", requireAuth, myBids); // alias per spec
 router.get("/auctions/:id", getAuction);
 router.post("/auctions", requireAuth, createAuction);
 router.put("/auctions/:id", requireAuth, updateAuction);

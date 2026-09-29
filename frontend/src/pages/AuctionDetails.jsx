@@ -33,14 +33,22 @@ export default function AuctionDetails() {
   // Every submitted bid goes straight to the backend, which is the
   // only place the invariant is actually enforced. The frontend never
   // decides whether a bid is valid — it just reports what the server
-  // said, including the specific error code.
+  // said, including the specific error code. A fresh Idempotency-Key
+  // per attempt means a dropped connection + retry can't ever create
+  // a second bid — the backend just replays the first result.
   async function handleBid(e) {
     e.preventDefault();
     setError("");
     setSuccess("");
     setSubmitting(true);
+    const idemKey =
+      window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
     try {
-      const res = await api.post(`/auctions/${id}/bids`, { amount: Number(amount) });
+      const res = await api.post(
+        `/auctions/${id}/bids`,
+        { amount: Number(amount) },
+        { headers: { "Idempotency-Key": idemKey } }
+      );
       setSuccess(res.data.message);
       setAmount("");
       await load();
