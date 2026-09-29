@@ -16,11 +16,17 @@ Everything below is implemented and tested end-to-end:
 - Create, list, view, edit, delete auctions
 - Browse with search + sort, My Auctions, My Bids
 - **Concurrency-safe bidding** via PostgreSQL `SELECT ... FOR UPDATE`
-  inside a transaction — verified with a scripted test that fires 50
-  simultaneous identical bids and confirms exactly 1 is accepted, 49
-  are rejected, and no bid is lost
+  inside a transaction — verified with a 5-scenario test suite: 50
+  simultaneous identical bids (1 accepted / 49 rejected), varied
+  simultaneous bids, sequential bidding, closing-time enforcement, and
+  duplicate-submission idempotency
+- Optional `Idempotency-Key` header on bid submissions — a retried
+  request with the same key replays the original result instead of
+  creating a second bid
 - Server-clock-authoritative closing time (frontend countdown is
   cosmetic only)
+- A read-only `consistency-check.js` script that independently
+  verifies auction/bid invariants straight from the database
 
 Not implemented (intentionally, per the brief's phased priority —
 optional/advanced, build only if you want to extend it further):
@@ -50,6 +56,13 @@ createdb bidzone
 psql -d bidzone -f database/schema.sql
 ```
 
+Already have a `bidzone` database from an earlier version? Just apply
+the one additive migration instead of recreating anything:
+
+```bash
+psql -d bidzone -f database/migrations/001_add_idempotency_keys.sql
+```
+
 ### 2. Backend
 
 ```bash
@@ -77,26 +90,33 @@ npm run dev
 The app starts on `http://localhost:5173`. The homepage shows a
 "Backend connected" indicator once both servers are running.
 
-### 4. Run the concurrency test
+### 4. Run the tests
 
 With the backend running (and its `.env` pointed at your DB):
 
 ```bash
 cd backend
-node scripts/concurrency-test.js
+node scripts/concurrency-test.js   # 5 scenarios: see below
+node scripts/consistency-check.js  # read-only DB invariant check
 ```
 
-Expected output:
+`concurrency-test.js` runs, against the real API and real database:
 
-```text
-Sent 50 concurrent bids in <N>ms
-Accepted: 1
-Rejected: 49
-Final highest bid in DB: 11000.00
-Database consistent: YES
+1. **50 identical simultaneous bids** — expects exactly 1 accepted, 49 `BID_TOO_LOW`
+2. **Varied simultaneous bids** (₹11k/12k/13k) — expects the final highest bid to be ₹13,000
+3. **Sequential bidding** — accept → reject-too-low → accept, checking each step
+4. **Closing time** — a bid just before `ends_at` is accepted, one after is rejected with `AUCTION_CLOSED`
+5. **Duplicate submission** — the same `Idempotency-Key` retried twice returns the identical result and creates only one bid record
 
-PASSED — exactly one bid committed, no lost updates.
-```
+`consistency-check.js` independently verifies, straight from the
+database, that: the stored highest bid matches the highest accepted
+bid; the highest bidder matches that bid; no accepted bid falls
+outside its auction's time window; every accepted bid respects the
+minimum-increment rule versus the one before it; and every bid
+references a real user and auction.
+
+Expected output for both: every line prefixed `✓`, ending in `ALL
+TESTS PASSED` / `ALL CONSISTENCY CHECKS PASSED`.
 
 ## Tech stack
 
