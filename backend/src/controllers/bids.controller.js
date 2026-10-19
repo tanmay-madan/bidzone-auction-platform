@@ -26,7 +26,87 @@ async function safeRollback(client) {
 // without risking a second bid being recorded. The key is scoped to
 // (bidder, auction) and the first result is replayed verbatim on
 // retry, before any locking or validation happens.
+// Naive unshielded bidding implementation (no transactions, no row locking).
+// Used to capture empirical race condition failure logs for docs/evidence/01-naive-failure.txt.
+export async function placeBidNaive(req, res) {
+  const auctionId = Number(req.params.id);
+  const amount = Number(req.body?.amount);
+  const bidderId = req.user.id;
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return res.status(400).json({
+      success: false,
+      code: "VALIDATION_ERROR",
+      message: "amount must be a positive number.",
+    });
+  }
+
+  try {
+    // 1. Plain un-locked read (VULNERABILITY: concurrent requests read identical state)
+    const auctionResult = await pool.query(
+      `SELECT id, seller_id, current_highest_bid, min_increment, starts_at, ends_at, status
+       FROM auctions WHERE id = $1`,
+      [auctionId]
+    );
+    const auction = auctionResult.rows[0];
+
+    if (!auction) {
+      return res.status(404).json({ success: false, code: "NOT_FOUND", message: "Auction not found." });
+    }
+
+    if (auction.seller_id === bidderId) {
+      return res.status(403).json({ success: false, code: "SELLER_CANNOT_BID", message: "You cannot bid on your own auction." });
+    }
+
+    if (auction.status === "CLOSED" || new Date() >= new Date(auction.ends_at)) {
+      return res.status(409).json({ success: false, code: "AUCTION_CLOSED", message: "This auction has already ended." });
+    }
+
+    const minAcceptable = Number(auction.current_highest_bid) + Number(auction.min_increment);
+    if (amount < minAcceptable) {
+      return res.status(409).json({
+        success: false,
+        code: "BID_TOO_LOW",
+        message: `Your bid must be at least ${minAcceptable}.`,
+      });
+    }
+
+    // Delay to simulate realistic race window (processing, query plan, network roundtrips)
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // 2. Uncoordinated INSERT & UPDATE without transaction isolation
+    const bidResult = await pool.query(
+      `INSERT INTO bids (auction_id, bidder_id, amount, status)
+       VALUES ($1, $2, $3, 'ACCEPTED')
+       RETURNING id`,
+      [auctionId, bidderId, amount]
+    );
+
+    await pool.query(
+      `UPDATE auctions
+       SET current_highest_bid = $1, current_highest_bidder_id = $2, updated_at = now()
+       WHERE id = $3`,
+      [amount, bidderId, auctionId]
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: "Bid placed successfully (naive unshielded mode)",
+      bid: { id: bidResult.rows[0].id, auction_id: auctionId, amount },
+      auction: { current_highest_bid: amount, current_highest_bidder_id: bidderId },
+    });
+  } catch (err) {
+    console.error("placeBidNaive error:", err.message);
+    return res.status(500).json({ success: false, code: "SERVER_ERROR", message: "Could not place bid." });
+  }
+}
+
 export async function placeBid(req, res) {
+  const strategy = req.query.strategy || req.headers["x-bidding-strategy"] || "pessimistic";
+  if (strategy === "naive") {
+    return placeBidNaive(req, res);
+  }
+
   const auctionId = Number(req.params.id);
   const amount = Number(req.body?.amount);
   const bidderId = req.user.id;

@@ -1,0 +1,45 @@
+================================================================================
+EVIDENCE 01: NAIVE UNPROTECTED RACE CONDITION FAILURE
+================================================================================
+Date & Time: 2026-10-19T09:13:42.053Z
+Target: POST /api/auctions/18/bids?strategy=naive
+Auction Starting Price: ₹10,000 | Min Increment: ₹1,000
+Concurrent Requests Sent: 50 simultaneous bids of ₹11,000
+Execution Duration: 391 ms
+--------------------------------------------------------------------------------
+HTTP RESPONSE SUMMARY:
+  - Total 201 Created (Accepted): 48
+  - Total 409 Conflict (Rejected): 2
+--------------------------------------------------------------------------------
+DATABASE VERIFICATION QUERY:
+SELECT id, bidder_id, amount, status, created_at FROM bids
+WHERE auction_id = 18 AND status = 'ACCEPTED';
+
+CORRUPTION DETECTED: 48 duplicate bids were accepted for the same price level!
+Expected: Exactly 1 accepted bid
+Actual in Database: 48 accepted bids
+
+ACCEPTED BID ROWS IN DATABASE (SAMPLE FIRST 15):
+  [ID: 229] Bidder: 265 | Amount: ₹11000.00 | Status: ACCEPTED | CreatedAt: 2026-10-19T09:13:41.822Z
+  [ID: 230] Bidder: 266 | Amount: ₹11000.00 | Status: ACCEPTED | CreatedAt: 2026-10-19T09:13:41.824Z
+  [ID: 231] Bidder: 271 | Amount: ₹11000.00 | Status: ACCEPTED | CreatedAt: 2026-10-19T09:13:41.846Z
+  [ID: 232] Bidder: 278 | Amount: ₹11000.00 | Status: ACCEPTED | CreatedAt: 2026-10-19T09:13:41.847Z
+  [ID: 233] Bidder: 277 | Amount: ₹11000.00 | Status: ACCEPTED | CreatedAt: 2026-10-19T09:13:41.847Z
+  [ID: 234] Bidder: 279 | Amount: ₹11000.00 | Status: ACCEPTED | CreatedAt: 2026-10-19T09:13:41.847Z
+  [ID: 235] Bidder: 280 | Amount: ₹11000.00 | Status: ACCEPTED | CreatedAt: 2026-10-19T09:13:41.847Z
+  [ID: 236] Bidder: 281 | Amount: ₹11000.00 | Status: ACCEPTED | CreatedAt: 2026-10-19T09:13:41.849Z
+  [ID: 237] Bidder: 282 | Amount: ₹11000.00 | Status: ACCEPTED | CreatedAt: 2026-10-19T09:13:41.850Z
+  [ID: 238] Bidder: 283 | Amount: ₹11000.00 | Status: ACCEPTED | CreatedAt: 2026-10-19T09:13:41.854Z
+  [ID: 239] Bidder: 284 | Amount: ₹11000.00 | Status: ACCEPTED | CreatedAt: 2026-10-19T09:13:41.857Z
+  [ID: 240] Bidder: 286 | Amount: ₹11000.00 | Status: ACCEPTED | CreatedAt: 2026-10-19T09:13:41.860Z
+  [ID: 241] Bidder: 285 | Amount: ₹11000.00 | Status: ACCEPTED | CreatedAt: 2026-10-19T09:13:41.864Z
+  [ID: 242] Bidder: 288 | Amount: ₹11000.00 | Status: ACCEPTED | CreatedAt: 2026-10-19T09:13:41.866Z
+  [ID: 243] Bidder: 287 | Amount: ₹11000.00 | Status: ACCEPTED | CreatedAt: 2026-10-19T09:13:41.873Z
+
+AUCTION CURRENT STATE:
+  - current_highest_bid: 11000.00
+  - current_highest_bidder_id: 274
+--------------------------------------------------------------------------------
+CONCLUSION: The naive read-then-write implementation allows concurrent requests
+to interleave between availability check and write. The invariant is VIOLATED.
+================================================================================

@@ -19,3 +19,6 @@ npm-debug.log*
 # Editor
 .vscode/
 .idea/
+
+# Ignore heavy reference PDFs but track docs/evidence and collections
+docs/*.pdf

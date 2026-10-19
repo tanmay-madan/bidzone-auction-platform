@@ -111,9 +111,10 @@ async function test2_variedSimultaneousBids(seller) {
   console.log(`  Results: ${results.map((r) => r.status).join(", ")}`);
   console.log(`  Final highest bid: ${auction.current_highest_bid}`);
 
-  const acceptedAmounts = results.filter((r) => r.status === 201).map((r) => r.body.bid.amount);
-  assert(acceptedAmounts.length === 3, "all 3 distinct-amount bids were valid at their turn and accepted");
-  assert(Number(auction.current_highest_bid) === 13000, "final highest bid equals the highest accepted bid (13000)");
+  const acceptedAmounts = results.filter((r) => r.status === 201).map((r) => Number(r.body.bid.amount));
+  assert(acceptedAmounts.includes(13000), "the highest bid of 13000 was accepted");
+  assert(acceptedAmounts.length >= 1 && acceptedAmounts.length <= 3, "valid number of bids accepted depending on commit order (1 to 3)");
+  assert(Number(auction.current_highest_bid) === 13000, "final highest bid equals the maximum bid (13000)");
   assert(auction.current_highest_bidder_id != null, "highest bidder matches the winning accepted bid");
 }
 
