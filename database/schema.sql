@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS auctions (
                               CHECK (status IN ('ACTIVE', 'CLOSED')),
   created_at                TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at                TIMESTAMPTZ NOT NULL DEFAULT now(),
+  version                   INTEGER NOT NULL DEFAULT 0,
   CHECK (ends_at > starts_at)
 );
 

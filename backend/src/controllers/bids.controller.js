@@ -8,26 +8,10 @@ async function safeRollback(client) {
   }
 }
 
-// POST /api/auctions/:id/bids
-//
-// This is the most important endpoint in the project. It must
-// guarantee that concurrent bids cannot corrupt auction state.
-//
-// Strategy: pessimistic locking with SELECT ... FOR UPDATE inside a
-// single transaction. Whichever concurrent request's transaction
-// acquires the row lock first runs the full read-validate-write
-// sequence and commits; every other concurrent request for the same
-// auction blocks on the lock until it is released, then re-reads the
-// now-updated row — so it correctly sees the new highest bid rather
-// than the stale one it would have seen without the lock.
-//
-// Idempotency: an optional "Idempotency-Key" header lets a client
-// safely retry the same submission (e.g. after a dropped connection)
-// without risking a second bid being recorded. The key is scoped to
-// (bidder, auction) and the first result is replayed verbatim on
-// retry, before any locking or validation happens.
-// Naive unshielded bidding implementation (no transactions, no row locking).
-// Used to capture empirical race condition failure logs for docs/evidence/01-naive-failure.txt.
+// -----------------------------------------------------------------------------
+// 1. NAIVE STRATEGY (Unshielded Read-Then-Write)
+// Used to capture empirical race condition failure logs for docs/evidence/01-naive-failure.txt
+// -----------------------------------------------------------------------------
 export async function placeBidNaive(req, res) {
   const auctionId = Number(req.params.id);
   const amount = Number(req.body?.amount);
@@ -101,10 +85,162 @@ export async function placeBidNaive(req, res) {
   }
 }
 
+// -----------------------------------------------------------------------------
+// 2. OPTIMISTIC STRATEGY (Version Column + Retry-on-Conflict)
+// Signature Feature: Appendix A.5 implementation for empirical benchmark vs pessimistic
+// -----------------------------------------------------------------------------
+export async function placeBidOptimistic(req, res) {
+  const auctionId = Number(req.params.id);
+  const amount = Number(req.body?.amount);
+  const bidderId = req.user.id;
+  const idemKey = req.headers["idempotency-key"] || null;
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return res.status(400).json({
+      success: false,
+      code: "VALIDATION_ERROR",
+      message: "amount must be a positive number.",
+    });
+  }
+
+  // Idempotency replay check happens before retry loop
+  if (idemKey) {
+    const existing = await pool.query(
+      `SELECT status_code, response FROM idempotency_keys
+       WHERE idem_key = $1 AND bidder_id = $2 AND auction_id = $3`,
+      [idemKey, bidderId, auctionId]
+    );
+    if (existing.rows.length > 0) {
+      const { status_code, response } = existing.rows[0];
+      return res.status(status_code).json(response);
+    }
+  }
+
+  const MAX_RETRIES = 12;
+  let attempts = 0;
+  let retryCount = 0;
+
+  while (attempts < MAX_RETRIES) {
+    attempts++;
+
+    // 1. Plain read WITHOUT locking the row
+    const auctionResult = await pool.query(
+      `SELECT id, seller_id, current_highest_bid, min_increment, starts_at, ends_at, status, version
+       FROM auctions WHERE id = $1`,
+      [auctionId]
+    );
+    const auction = auctionResult.rows[0];
+
+    if (!auction) {
+      return res.status(404).json({ success: false, code: "NOT_FOUND", message: "Auction not found." });
+    }
+
+    if (auction.seller_id === bidderId) {
+      return res.status(403).json({ success: false, code: "SELLER_CANNOT_BID", message: "You cannot bid on your own auction." });
+    }
+
+    const now = new Date();
+    if (auction.status === "CLOSED" || now >= new Date(auction.ends_at)) {
+      return res.status(409).json({ success: false, code: "AUCTION_CLOSED", message: "This auction has already ended." });
+    }
+    if (now < new Date(auction.starts_at)) {
+      return res.status(409).json({ success: false, code: "AUCTION_NOT_STARTED", message: "This auction has not started yet." });
+    }
+
+    const minAcceptable = Number(auction.current_highest_bid) + Number(auction.min_increment);
+    if (amount < minAcceptable) {
+      // Outbid by state at read time — no need to retry further
+      const body = {
+        success: false,
+        code: "BID_TOO_LOW",
+        message: `Your bid must be at least ${minAcceptable}.`,
+        retries: retryCount,
+      };
+
+      if (idemKey) {
+        await pool.query(
+          `INSERT INTO idempotency_keys (idem_key, bidder_id, auction_id, status_code, response)
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (idem_key, bidder_id, auction_id) DO NOTHING`,
+          [idemKey, bidderId, auctionId, 409, JSON.stringify(body)]
+        );
+      }
+      return res.status(409).json(body);
+    }
+
+    // 2. Atomic conditional UPDATE verifying version matches read version
+    const updateResult = await pool.query(
+      `UPDATE auctions
+       SET current_highest_bid = $1,
+           current_highest_bidder_id = $2,
+           version = version + 1,
+           updated_at = now()
+       WHERE id = $3 AND version = $4
+       RETURNING id, current_highest_bid, current_highest_bidder_id, version`,
+      [amount, bidderId, auctionId, auction.version]
+    );
+
+    if (updateResult.rowCount === 0) {
+      // Collision detected! Another transaction updated the auction version first.
+      retryCount++;
+      if (attempts < MAX_RETRIES) {
+        // Bounded exponential backoff with random jitter to prevent thundering herd
+        const backoff = Math.min(120, 10 * Math.pow(1.4, attempts) + Math.random() * 15);
+        await new Promise((resolve) => setTimeout(resolve, backoff));
+        continue;
+      } else {
+        return res.status(409).json({
+          success: false,
+          code: "CONCURRENCY_CONFLICT",
+          message: "High contention: could not acquire slot within retry limit.",
+          retries: retryCount,
+        });
+      }
+    }
+
+    // 3. Update succeeded! Insert accepted bid record
+    const bidResult = await pool.query(
+      `INSERT INTO bids (auction_id, bidder_id, amount, status)
+       VALUES ($1, $2, $3, 'ACCEPTED')
+       RETURNING id`,
+      [auctionId, bidderId, amount]
+    );
+
+    const body = {
+      success: true,
+      message: "Bid placed successfully (optimistic mode)",
+      bid: { id: bidResult.rows[0].id, auction_id: auctionId, amount },
+      auction: {
+        current_highest_bid: amount,
+        current_highest_bidder_id: bidderId,
+        version: updateResult.rows[0].version,
+      },
+      retries: retryCount,
+    };
+
+    if (idemKey) {
+      await pool.query(
+        `INSERT INTO idempotency_keys (idem_key, bidder_id, auction_id, status_code, response)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (idem_key, bidder_id, auction_id) DO NOTHING`,
+        [idemKey, bidderId, auctionId, 201, JSON.stringify(body)]
+      );
+    }
+
+    return res.status(201).json(body);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// 3. PESSIMISTIC STRATEGY (SELECT ... FOR UPDATE) - Default Production Engine
+// -----------------------------------------------------------------------------
 export async function placeBid(req, res) {
   const strategy = req.query.strategy || req.headers["x-bidding-strategy"] || "pessimistic";
   if (strategy === "naive") {
     return placeBidNaive(req, res);
+  }
+  if (strategy === "optimistic") {
+    return placeBidOptimistic(req, res);
   }
 
   const auctionId = Number(req.params.id);
@@ -122,8 +258,7 @@ export async function placeBid(req, res) {
 
   const client = await pool.connect();
   try {
-    // Idempotency replay check happens before BEGIN — it's a plain
-    // read, not part of the bidding transaction itself.
+    // Idempotency replay check happens before BEGIN — it's a plain read
     if (idemKey) {
       const existing = await client.query(
         `SELECT status_code, response FROM idempotency_keys
@@ -138,12 +273,10 @@ export async function placeBid(req, res) {
 
     await client.query("BEGIN");
 
-    // Row-level lock: any other transaction bidding on this same
-    // auction now blocks here until this transaction commits or
-    // rolls back.
+    // Row-level lock: any other transaction bidding on this same auction blocks here
     const auctionResult = await client.query(
       `SELECT id, seller_id, current_highest_bid, min_increment,
-              starts_at, ends_at, status
+              starts_at, ends_at, status, version
        FROM auctions
        WHERE id = $1
        FOR UPDATE`,
@@ -169,12 +302,7 @@ export async function placeBid(req, res) {
       });
     }
 
-    // Authoritative time check: the database's own clock, evaluated
-    // inside this transaction, is the only source of truth for
-    // whether the auction is open. The frontend countdown is purely
-    // visual and is never trusted here. Policy: starts_at <= now() <
-    // ends_at is the open window; now() >= ends_at closes it even if
-    // the request left the browser before that instant.
+    // Authoritative time check: server clock at transaction time
     const timeCheck = await client.query(
       `SELECT
          now() < $1::timestamptz AS not_started,
@@ -203,8 +331,6 @@ export async function placeBid(req, res) {
         [auctionId, bidderId, amount, rejectionCode]
       );
 
-      // If the auction has actually timed out, flip status to CLOSED
-      // now so future reads don't need to recompute it.
       if (rejectionCode === "AUCTION_CLOSED" && auction.status !== "CLOSED") {
         await client.query(`UPDATE auctions SET status = 'CLOSED' WHERE id = $1`, [
           auctionId,
@@ -233,9 +359,7 @@ export async function placeBid(req, res) {
       return res.status(409).json(body);
     }
 
-    // Accepted: insert the bid and update the auction's committed
-    // highest bid atomically, in the same transaction as the check
-    // above, so no other transaction can interleave between them.
+    // Accepted: insert the bid and update the auction's state atomically
     const bidResult = await client.query(
       `INSERT INTO bids (auction_id, bidder_id, amount, status)
        VALUES ($1, $2, $3, 'ACCEPTED')
@@ -246,6 +370,7 @@ export async function placeBid(req, res) {
       `UPDATE auctions
        SET current_highest_bid = $1,
            current_highest_bidder_id = $2,
+           version = version + 1,
            updated_at = now()
        WHERE id = $3`,
       [amount, bidderId, auctionId]
