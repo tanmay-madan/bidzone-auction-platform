@@ -168,6 +168,15 @@ export async function placeBidOptimistic(req, res) {
       return res.status(409).json(body);
     }
 
+    // Anti-sniping check: If bid arrives in final 2 minutes, extend closing time by 2 minutes
+    const remainingMs = new Date(auction.ends_at).getTime() - Date.now();
+    let extended = false;
+    let endsAtClause = "";
+    if (remainingMs > 0 && remainingMs <= 2 * 60 * 1000) {
+      endsAtClause = ", ends_at = ends_at + INTERVAL '2 minutes'";
+      extended = true;
+    }
+
     // 2. Atomic conditional UPDATE verifying version matches read version
     const updateResult = await pool.query(
       `UPDATE auctions
@@ -175,8 +184,9 @@ export async function placeBidOptimistic(req, res) {
            current_highest_bidder_id = $2,
            version = version + 1,
            updated_at = now()
+           ${endsAtClause}
        WHERE id = $3 AND version = $4
-       RETURNING id, current_highest_bid, current_highest_bidder_id, version`,
+       RETURNING id, current_highest_bid, current_highest_bidder_id, version, ends_at`,
       [amount, bidderId, auctionId, auction.version]
     );
 
@@ -208,12 +218,16 @@ export async function placeBidOptimistic(req, res) {
 
     const body = {
       success: true,
-      message: "Bid placed successfully (optimistic mode)",
+      message: extended
+        ? "Bid placed successfully (auction extended by 2 minutes via anti-sniping)"
+        : "Bid placed successfully (optimistic mode)",
       bid: { id: bidResult.rows[0].id, auction_id: auctionId, amount },
       auction: {
         current_highest_bid: amount,
         current_highest_bidder_id: bidderId,
         version: updateResult.rows[0].version,
+        ends_at: updateResult.rows[0].ends_at,
+        anti_sniping_extended: extended,
       },
       retries: retryCount,
     };
@@ -359,6 +373,23 @@ export async function placeBid(req, res) {
       return res.status(409).json(body);
     }
 
+    // Anti-sniping check under row lock: If bid arrives in final 2 minutes, extend closing time by 2 minutes
+    const remainingMs = new Date(auction.ends_at).getTime() - Date.now();
+    let extended = false;
+    let finalEndsAt = auction.ends_at;
+
+    if (remainingMs > 0 && remainingMs <= 2 * 60 * 1000) {
+      const extendRes = await client.query(
+        `UPDATE auctions
+         SET ends_at = ends_at + INTERVAL '2 minutes'
+         WHERE id = $1
+         RETURNING ends_at`,
+        [auctionId]
+      );
+      finalEndsAt = extendRes.rows[0].ends_at;
+      extended = true;
+    }
+
     // Accepted: insert the bid and update the auction's state atomically
     const bidResult = await client.query(
       `INSERT INTO bids (auction_id, bidder_id, amount, status)
@@ -378,9 +409,16 @@ export async function placeBid(req, res) {
 
     const body = {
       success: true,
-      message: "Bid placed successfully",
+      message: extended
+        ? "Bid placed successfully (auction extended by 2 minutes via anti-sniping)"
+        : "Bid placed successfully",
       bid: { id: bidResult.rows[0].id, auction_id: auctionId, amount },
-      auction: { current_highest_bid: amount, current_highest_bidder_id: bidderId },
+      auction: {
+        current_highest_bid: amount,
+        current_highest_bidder_id: bidderId,
+        ends_at: finalEndsAt,
+        anti_sniping_extended: extended,
+      },
     };
 
     if (idemKey) {
