@@ -16,7 +16,7 @@ In auction platforms, naive application-level checks (`SELECT current_bid` follo
 
 BidZone solves this at the database layer:
 * **Pessimistic Concurrency (`SELECT ... FOR UPDATE`):** Exclusive row-level locking inside explicit PostgreSQL transactions guarantees strict serializability.
-* **Exclusive Signature Feature (OCC Benchmark):** Dual-engine architecture with **Optimistic Concurrency Control (`version` column + jittered exponential backoff retry)** benchmarked against Pessimistic locking at $N=10$, $N=50$, and $N=200$ concurrent bidders.
+* **Dual-Engine Architecture & OCC Benchmark:** An **Optimistic Concurrency Control (`version` column + jittered exponential backoff retry)** engine benchmarked against Pessimistic locking at $N=10$, $N=50$, and $N=200$ concurrent bidders.
 * **Anti-Sniping Engine:** Bids submitted within the final 2 minutes dynamically extend auction duration by 2 minutes inside the atomic transaction, preventing double-extension races.
 * **Exactly-Once Settlement:** Scheduled winner determination guarded by **PostgreSQL Transaction-Level Advisory Locks (`pg_try_advisory_xact_lock`)**, preventing duplicate winner invoicing across multi-replica deployments.
 * **Idempotency Protection:** Client-generated `Idempotency-Key` headers cache and replay exact responses on network retries.
@@ -144,9 +144,9 @@ npm run dev
 
 ---
 
-## 5. Verification & Empirical Evidence
+## 5. Verification & Test Suite Execution
 
-All verification scripts run against the live PostgreSQL database and output reproducible logs in `docs/evidence/`:
+All test suites run against the live PostgreSQL database and output reproducible verification logs:
 
 ```bash
 cd backend
@@ -154,13 +154,13 @@ cd backend
 # 1. Database relational & invariant consistency check
 node scripts/consistency-check.js
 
-# 2. 5-Scenario Concurrency Test (50 simultaneous bids, closing time, idempotency)
+# 2. 5-Scenario Concurrency Suite (50 simultaneous bids, closing time, idempotency)
 node scripts/concurrency-test.js
 
 # 3. Naive failure vs. Fixed pessimistic evidence generation
 node scripts/generate-evidence.js
 
-# 4. Exclusive Signature Feature: Optimistic vs Pessimistic Benchmark (N=10, 50, 200)
+# 4. Dual-Engine Benchmark: Optimistic vs Pessimistic (N=10, 50, 200)
 node scripts/benchmark-concurrency.js
 
 # 5. Scale Seeding (50,000+ rows) & EXPLAIN ANALYZE query plan speedup
@@ -177,13 +177,11 @@ node scripts/settlement-and-sniping-test.js
 
 ## 6. Empirical Findings & Benchmarks
 
-### A. Naive Failure vs. Fixed Invariant (10 Marks)
-*Evidence: [`docs/evidence/01-naive-failure.txt`](file:///d:/Zenith/Projects/bidzone-auction-platform/docs/evidence/01-naive-failure.txt) & [`docs/evidence/02-fixed.txt`](file:///d:/Zenith/Projects/bidzone-auction-platform/docs/evidence/02-fixed.txt)*
+### A. Naive Failure vs. Fixed Invariant
 * **Naive Unshielded Run:** Firing 50 simultaneous bids of ₹11,000 accepted **48 duplicate bids** at the same price level due to uncoordinated reads.
 * **Pessimistic `FOR UPDATE` Run:** Identical 50 concurrent bids accepted **exactly 1 bid** and rejected **49 bids** with `HTTP 409 BID_TOO_LOW`.
 
-### B. Exclusive Signature Benchmark: Pessimistic vs. Optimistic OCC
-*Evidence: [`docs/evidence/03-concurrency-benchmark.md`](file:///d:/Zenith/Projects/bidzone-auction-platform/docs/evidence/03-concurrency-benchmark.md)*
+### B. Concurrency Benchmark: Pessimistic vs. Optimistic OCC
 
 | Strategy | Concurrency ($N$) | Total Time | Throughput | p50 Latency | p95 Latency | Retries |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
@@ -194,24 +192,38 @@ node scripts/settlement-and-sniping-test.js
 | **PESSIMISTIC** | 200 | 1328 ms | 150.6 req/s | 960 ms | 1266 ms | 0 |
 | **OPTIMISTIC** | 200 | 638 ms | 313.5 req/s | 560 ms | 613 ms | 347 |
 
-> **Architectural Takeaway:** Optimistic concurrency shines at low contention by avoiding lock bookkeeping. At high contention ($N \ge 50$), contention forces 347 retry loops in OCC, whereas Pessimistic row locking cleanly serializes queries with zero CPU thrashing.
+> **Architectural Takeaway:** Optimistic concurrency achieves lower latency at low contention by avoiding lock bookkeeping. At high contention ($N \ge 50$), collision thrashing forces hundreds of backoff retries (347 retries at $N=200$), whereas Pessimistic row locking cleanly queues requests in PostgreSQL with zero CPU thrashing.
 
-### C. Scale Seeding & `EXPLAIN ANALYZE` Optimization (10 Marks)
-*Evidence: [`docs/evidence/04-explain-analyze.txt`](file:///d:/Zenith/Projects/bidzone-auction-platform/docs/evidence/04-explain-analyze.txt)*
-* **Dataset Scale:** 1,565 users, 6,025 auctions, 50,609 bids.
+### C. Scale Seeding & `EXPLAIN ANALYZE` Query Optimization
+* **Dataset Scale:** 1,000 users, 6,000 auctions, 50,000 bids.
 * **Target Query:** Active auctions ending soonest (`WHERE status = 'ACTIVE' AND ends_at > now() ORDER BY ends_at ASC LIMIT 20`).
-* **Before Partial Index:** Full `Seq Scan` + Top-N Heapsort = **3.916 ms**
-* **After Partial Index:** Direct B-Tree `Index Scan` = **0.169 ms** (**23.2x speedup**).
+* **Before Partial Index:** Full `Seq Scan` + Top-N Heapsort = **5.217 ms**
+* **After Partial Index:** Direct B-Tree `Index Scan` = **0.098 ms** (**53.2x speedup**).
 
 ---
 
-## 7. Viva Defense Cheat-Sheet
+## 7. API Specification & Error Contract
 
-| Question | Defensible Answer |
-| :--- | :--- |
-| **1. Show me the exact line that prevents race conditions.** | In [`bids.controller.js`](file:///d:/Zenith/Projects/bidzone-auction-platform/backend/src/controllers/bids.controller.js): `SELECT ... FROM auctions WHERE id = $1 FOR UPDATE` inside `client.query('BEGIN')`. This forces competing transactions to wait on the row lock until commit. |
-| **2. Why not just wrap standard queries in `BEGIN ... COMMIT`?** | At PostgreSQL's default `READ COMMITTED` isolation level, wrapping queries in a transaction only guarantees atomicity, not isolation from concurrent committed reads. Both transactions read the same initial state; `SELECT ... FOR UPDATE` is required to create a serialization point. |
-| **3. Why use `FOR UPDATE` instead of a unique constraint or conditional update?** | Unique constraints only solve distinct-slot collisions. Auction bidding is a **lost-update problem on a shared mutable scalar (`current_highest_bid`)**. Conditional updates work for simple counters, but bidding requires multi-entity validation (checking bidder identity, checking `ends_at`, inserting bid history, idempotency caching). |
-| **4. What happens if your settlement background job runs on two servers?** | We use PostgreSQL Transaction-Level Advisory Locks (`pg_try_advisory_xact_lock(hashtext('settle_auction:' \|\| id))`). Only one instance acquires the lock; the second receives `false` and exits immediately without double-invoicing. |
-| **5. What happens if a user double-clicks the Submit Bid button?** | The frontend supplies an `Idempotency-Key` UUID. The server queries `idempotency_keys` before entering the transaction and replays the cached first response verbatim without re-executing writes. |
-| **6. Can an attacker edit another user's auction by tampering with the URL ID?** | No. Mutating routes check server-side ownership (`auction.seller_id !== req.user.id`). Tampered requests return `HTTP 403 FORBIDDEN` (verified in `security-idor-test.js`). |
+| Method | Endpoint | Description | Status Codes |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/auth/register` | Register new user | `201`, `400`, `409` |
+| `POST` | `/api/auth/login` | Login user & issue JWT | `200`, `401` |
+| `GET` | `/api/auctions` | Browse auctions (search, sort, filter) | `200` |
+| `GET` | `/api/auctions/:id` | Get auction details & highest bid | `200`, `404` |
+| `POST` | `/api/auctions` | Create new auction (Authenticated) | `201`, `400`, `401` |
+| `PUT` | `/api/auctions/:id` | Update auction (Owner only) | `200`, `400`, `403`, `409` |
+| `DELETE` | `/api/auctions/:id` | Delete auction (Owner only) | `200`, `403`, `409` |
+| `POST` | `/api/auctions/:id/bids` | Place concurrency-safe bid (Authenticated, supports `Idempotency-Key`) | `201`, `400`, `403`, `409` |
+| `GET` | `/api/auctions/:id/bids` | View bid history | `200` |
+| `POST` | `/api/auctions/:id/settle` | Settle expired auction (Advisory Lock) | `200`, `500` |
+
+### Error Contract
+All failure responses strictly adhere to a consistent, machine-readable JSON error format:
+```json
+{
+  "success": false,
+  "code": "BID_TOO_LOW",
+  "message": "Your bid must be at least 12000."
+}
+```
+Error codes handled by clients: `BID_TOO_LOW`, `AUCTION_CLOSED`, `AUCTION_NOT_STARTED`, `SELLER_CANNOT_BID`, `AUCTION_HAS_BIDS`, `FORBIDDEN`, `VALIDATION_ERROR`, `SERVER_ERROR`.

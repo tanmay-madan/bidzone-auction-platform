@@ -22,3 +22,7 @@ npm-debug.log*
 
 # Ignore heavy reference PDFs but track docs/evidence and collections
 docs/*.pdf
+
+# Viva preparation notes & personal study guides (keep private per rule)
+docs/viva_*.md
+docs/*_notes.md
