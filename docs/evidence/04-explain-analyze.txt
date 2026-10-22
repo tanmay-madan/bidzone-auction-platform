@@ -1,13 +1,13 @@
 ================================================================================
 EVIDENCE 04: SCALE SEEDING (50,000+ ROWS) & EXPLAIN ANALYZE QUERY OPTIMIZATION
 ================================================================================
-Execution Date: 2026-10-21T03:05:13.029Z
+Execution Date: 2026-10-22T15:06:39.872Z
 Environment: PostgreSQL 18.6 (Localhost)
 
 DATASET SCALE SUMMARY:
-  - Total Users:    1,565
-  - Total Auctions: 6,025 (Exceeds mandatory 5,000-row rubric threshold)
-  - Total Bids:     50,609 (Exceeds 50,000-row volume target)
+  - Total Users:    1,000
+  - Total Auctions: 6,000 (Exceeds mandatory 5,000-row rubric threshold)
+  - Total Bids:     50,000 (Exceeds 50,000-row volume target)
 
 TARGET CRITICAL READ QUERY (Browse Active Auctions Ending Soonest):
   SELECT id, title, current_highest_bid, min_increment, starts_at, ends_at, status
@@ -20,25 +20,25 @@ TARGET CRITICAL READ QUERY (Browse Active Auctions Ending Soonest):
 1. BEFORE OPTIMIZATION: UNINDEXED SEQUENTIAL SCAN + IN-MEMORY HEAPSORT
 --------------------------------------------------------------------------------
 Query Plan (Without Partial Index):
-Limit  (cost=353.54..353.59 rows=20 width=87) (actual time=3.673..3.679 rows=20.00 loops=1)
+Limit  (cost=520.97..521.02 rows=20 width=88) (actual time=5.161..5.168 rows=20.00 loops=1)
   Output: id, title, current_highest_bid, min_increment, starts_at, ends_at, status
-  Buffers: shared hit=177
-  ->  Sort  (cost=353.54..360.22 rows=2672 width=87) (actual time=3.671..3.673 rows=20.00 loops=1)
+  Buffers: shared hit=345
+  ->  Sort  (cost=520.97..527.64 rows=2667 width=88) (actual time=5.158..5.160 rows=20.00 loops=1)
         Output: id, title, current_highest_bid, min_increment, starts_at, ends_at, status
         Sort Key: auctions.ends_at
         Sort Method: top-N heapsort  Memory: 29kB
-        Buffers: shared hit=177
-        ->  Seq Scan on public.auctions  (cost=0.00..282.44 rows=2672 width=87) (actual time=0.031..2.748 rows=4000.00 loops=1)
+        Buffers: shared hit=345
+        ->  Seq Scan on public.auctions  (cost=0.00..450.00 rows=2667 width=88) (actual time=0.146..4.169 rows=4000.00 loops=1)
               Output: id, title, current_highest_bid, min_increment, starts_at, ends_at, status
               Filter: (((auctions.status)::text = 'ACTIVE'::text) AND (auctions.ends_at > now()))
-              Rows Removed by Filter: 2025
-              Buffers: shared hit=177
+              Rows Removed by Filter: 2000
+              Buffers: shared hit=345
 Planning:
-  Buffers: shared hit=74
-Planning Time: 3.115 ms
-Execution Time: 3.916 ms
+  Buffers: shared hit=35
+Planning Time: 0.510 ms
+Execution Time: 5.217 ms
 
-Measured Execution Time (Before): 3.916 ms
+Measured Execution Time (Before): 5.217 ms
 Diagnosis: PostgreSQL must perform a full Sequential Scan across thousands of rows,
 filter every tuple against status and timestamp, and execute an explicit Top-N Heapsort
 in memory before returning the first 20 records.
@@ -62,25 +62,25 @@ Engineering Justification:
 3. AFTER OPTIMIZATION: DIRECT B-TREE INDEX SCAN
 --------------------------------------------------------------------------------
 Query Plan (With Partial Index):
-Limit  (cost=0.28..6.04 rows=20 width=87) (actual time=0.114..0.142 rows=20.00 loops=1)
+Limit  (cost=0.28..11.13 rows=20 width=88) (actual time=0.066..0.084 rows=20.00 loops=1)
   Output: id, title, current_highest_bid, min_increment, starts_at, ends_at, status
   Buffers: shared hit=20 read=2
-  ->  Index Scan using idx_auctions_active_ending_soon on public.auctions  (cost=0.28..770.05 rows=2672 width=87) (actual time=0.112..0.138 rows=20.00 loops=1)
+  ->  Index Scan using idx_auctions_active_ending_soon on public.auctions  (cost=0.28..1446.51 rows=2667 width=88) (actual time=0.066..0.082 rows=20.00 loops=1)
         Output: id, title, current_highest_bid, min_increment, starts_at, ends_at, status
         Index Cond: (auctions.ends_at > now())
         Index Searches: 1
         Buffers: shared hit=20 read=2
 Planning:
-  Buffers: shared hit=32
-Planning Time: 0.302 ms
-Execution Time: 0.169 ms
+  Buffers: shared hit=30
+Planning Time: 0.212 ms
+Execution Time: 0.098 ms
 
-Measured Execution Time (After): 0.169 ms
-Performance Improvement: 23.2x faster
+Measured Execution Time (After): 0.098 ms
+Performance Improvement: 53.2x faster
 
 ================================================================================
 RECRUITER & CV BULLET STATEMENT:
 "Optimized critical auction catalog queries on a 50k+ row dataset, reducing
-browse query latency from 3.916 ms to 0.169 ms (23.2x speedup) using a
+browse query latency from 5.217 ms to 0.098 ms (53.2x speedup) using a
 PostgreSQL partial B-Tree index."
 ================================================================================

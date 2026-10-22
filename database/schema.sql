@@ -47,11 +47,14 @@ CREATE INDEX IF NOT EXISTS idx_auctions_seller ON auctions(seller_id);
 CREATE INDEX IF NOT EXISTS idx_bids_auction ON bids(auction_id);
 CREATE INDEX IF NOT EXISTS idx_bids_bidder ON bids(bidder_id);
 
+-- Partial composite index for fast active auction catalog browsing
+CREATE INDEX IF NOT EXISTS idx_auctions_active_ending_soon
+ON auctions (ends_at ASC)
+WHERE status = 'ACTIVE';
+
 -- Idempotency support: lets a client safely retry a bid submission
 -- (e.g. after a dropped connection) with the same key and get back
--- the original result instead of creating a second bid. See
--- database/migrations/001_add_idempotency_keys.sql for the standalone
--- migration if you already have a bidzone database without this table.
+-- the original result instead of creating a second bid.
 CREATE TABLE IF NOT EXISTS idempotency_keys (
   id           SERIAL PRIMARY KEY,
   idem_key     VARCHAR(100) NOT NULL,

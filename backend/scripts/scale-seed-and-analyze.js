@@ -1,7 +1,7 @@
 // =============================================================================
 // BidZone Scale Seeding & EXPLAIN ANALYZE Performance Optimization
 // Mandated by FSD Student Guide & Section 3.6 of Faculty Review Guide
-// Target: 5,000+ auctions, 50,000+ bids, and measured query plan improvement.
+// Target: 5,000+ auctions, 50,000+ bids, invariant-preserving distributions.
 // Output: docs/evidence/04-explain-analyze.txt
 // =============================================================================
 
@@ -22,6 +22,10 @@ async function seedAtScale() {
   try {
     await client.query("BEGIN");
 
+    // Clean up tables for fresh invariant-preserving scale run
+    console.log("    - Resetting tables for clean invariant-preserving scale run...");
+    await client.query("TRUNCATE TABLE idempotency_keys, bids, auctions, users RESTART IDENTITY CASCADE;");
+
     // 1. Seed 1,000 users
     console.log("    - Generating 1,000 users...");
     await client.query(`
@@ -35,7 +39,7 @@ async function seedAtScale() {
       ON CONFLICT (email) DO NOTHING;
     `);
 
-    // 2. Seed 6,000 auctions using valid array-indexed user IDs
+    // 2. Seed 6,000 auctions
     console.log("    - Generating 6,000 auctions across categories and statuses...");
     await client.query(`
       WITH user_pool AS (
@@ -51,7 +55,7 @@ async function seedAtScale() {
         'Scale Auction #' || i || ' - ' || (ARRAY['Vintage Rolex Chronograph', 'NVIDIA RTX 4090 GPU', 'HHKB Pro 2 Mechanical Keyboard', '1909 S VDB Lincoln Wheat Penny', '1st Edition Charizard Holographic', 'Leica M6 35mm Rangefinder Camera', 'MacBook Pro M3 Max 64GB', 'Bose QuietComfort Ultra Headphones'])[1 + (i % 8)],
         'High-concurrency simulated catalog item #' || i || ' for benchmark query analysis.',
         (1000 + (i % 100) * 100)::numeric,
-        (1000 + (i % 100) * 100 + (i % 25) * 50)::numeric,
+        (1000 + (i % 100) * 100)::numeric,
         50::numeric,
         now() - ((72 + (i % 100)) || ' hours')::interval,
         CASE
@@ -69,24 +73,46 @@ async function seedAtScale() {
       FROM generate_series(1, 6000) AS i, user_pool u;
     `);
 
-    // 3. Seed 50,000 bids using valid array-indexed auction and user IDs
-    console.log("    - Generating 50,000 bids with realistic distributions...");
+    // 3. Seed 50,000 bids with strict invariant compliance
+    // Chronologically ordered within [starts_at, ends_at) and strictly incrementing amounts
+    console.log("    - Generating 50,000 bids with strict invariant preservation...");
     await client.query(`
-      WITH auction_pool AS (
-        SELECT array_agg(id) AS a_ids FROM auctions
+      WITH numbered_auctions AS (
+        SELECT id, starting_price, min_increment, starts_at, ends_at,
+               ROW_NUMBER() OVER () as rnum
+        FROM auctions
+        WHERE title LIKE 'Scale Auction #%'
       ),
       user_pool AS (
         SELECT array_agg(id) AS u_ids FROM users
       )
       INSERT INTO bids (auction_id, bidder_id, amount, status, reason, created_at)
       SELECT
-        a.a_ids[1 + (i % array_length(a.a_ids, 1))],
-        u.u_ids[1 + ((i * 13) % array_length(u.u_ids, 1))],
-        (1050 + (i % 200) * 25)::numeric,
-        CASE WHEN (i % 5) = 0 THEN 'ACCEPTED' ELSE 'REJECTED' END,
-        CASE WHEN (i % 5) = 0 THEN NULL ELSE 'BID_TOO_LOW' END,
-        now() - ((i % 1000) || ' minutes')::interval
-      FROM generate_series(1, 50000) AS i, auction_pool a, user_pool u;
+        a.id,
+        u.u_ids[1 + ((step * 17 + a.id) % array_length(u.u_ids, 1))],
+        a.starting_price + (step * a.min_increment),
+        'ACCEPTED',
+        NULL,
+        a.starts_at + ((a.ends_at - a.starts_at) * (step::float / 15.0))
+      FROM generate_series(1, 9) AS step
+      CROSS JOIN numbered_auctions a
+      CROSS JOIN user_pool u
+      WHERE ((a.rnum - 1) * 9 + step) <= 50000;
+    `);
+
+    // 4. Synchronize auctions current_highest_bid and current_highest_bidder_id
+    console.log("    - Synchronizing auction highest bid and bidder invariants...");
+    await client.query(`
+      UPDATE auctions a
+      SET current_highest_bid = sub.max_amount,
+          current_highest_bidder_id = sub.bidder_id
+      FROM (
+        SELECT DISTINCT ON (auction_id) auction_id, amount AS max_amount, bidder_id
+        FROM bids
+        WHERE status = 'ACCEPTED'
+        ORDER BY auction_id, amount DESC, created_at ASC
+      ) sub
+      WHERE a.id = sub.auction_id;
     `);
 
     await client.query("COMMIT");
@@ -112,7 +138,6 @@ async function measureQueryOptimization() {
   console.log(`    Total Auctions in DB: ${Number(auctionCount.rows[0].count).toLocaleString()}`);
   console.log(`    Total Bids in DB:     ${Number(bidCount.rows[0].count).toLocaleString()}`);
 
-  // Query representing the highest-volume browse endpoint: Active auctions ending soonest
   const targetQuery = `
     SELECT id, title, current_highest_bid, min_increment, starts_at, ends_at, status
     FROM auctions
