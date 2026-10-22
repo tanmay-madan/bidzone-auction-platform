@@ -1,7 +1,7 @@
 ================================================================================
 EVIDENCE 06: EXACTLY-ONCE SETTLEMENT (ADVISORY LOCKS) & ANTI-SNIPING SUITE
 ================================================================================
-Execution Date: 2026-10-21T14:18:36.562Z
+Execution Date: 2026-10-22T15:22:24.975Z
 Environment: PostgreSQL 18.6 with Transaction-Level Advisory Locks
 
 TEST RESULTS SUMMARY:

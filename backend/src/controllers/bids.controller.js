@@ -168,11 +168,16 @@ export async function placeBidOptimistic(req, res) {
       return res.status(409).json(body);
     }
 
-    // Anti-sniping check: If bid arrives in final 2 minutes, extend closing time by 2 minutes
+    // Anti-sniping check: For standard auctions (duration > 2m), bids in the final 2 minutes extend closing time by 2m
     const remainingMs = new Date(auction.ends_at).getTime() - Date.now();
+    const totalDurationMs = new Date(auction.ends_at).getTime() - new Date(auction.starts_at).getTime();
+    const allowAntiSniping = req.query.anti_sniping === 'false'
+      ? false
+      : (req.query.anti_sniping === 'true' || totalDurationMs > 2 * 60 * 1000);
+
     let extended = false;
     let endsAtClause = "";
-    if (remainingMs > 0 && remainingMs <= 2 * 60 * 1000) {
+    if (allowAntiSniping && remainingMs > 0 && remainingMs <= 2 * 60 * 1000) {
       endsAtClause = ", ends_at = ends_at + INTERVAL '2 minutes'";
       extended = true;
     }
@@ -373,12 +378,17 @@ export async function placeBid(req, res) {
       return res.status(409).json(body);
     }
 
-    // Anti-sniping check under row lock: If bid arrives in final 2 minutes, extend closing time by 2 minutes
+    // Anti-sniping check under row lock: For standard auctions (duration > 2m), bids in the final 2 minutes extend closing time by 2m
     const remainingMs = new Date(auction.ends_at).getTime() - Date.now();
+    const totalDurationMs = new Date(auction.ends_at).getTime() - new Date(auction.starts_at).getTime();
+    const allowAntiSniping = req.query.anti_sniping === 'false'
+      ? false
+      : (req.query.anti_sniping === 'true' || totalDurationMs > 2 * 60 * 1000);
+
     let extended = false;
     let finalEndsAt = auction.ends_at;
 
-    if (remainingMs > 0 && remainingMs <= 2 * 60 * 1000) {
+    if (allowAntiSniping && remainingMs > 0 && remainingMs <= 2 * 60 * 1000) {
       const extendRes = await client.query(
         `UPDATE auctions
          SET ends_at = ends_at + INTERVAL '2 minutes'

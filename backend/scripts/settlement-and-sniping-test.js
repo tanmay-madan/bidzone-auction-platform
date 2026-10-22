@@ -76,6 +76,7 @@ async function testAntiSniping(sellerToken, bidderToken) {
   // Create an auction expiring in 60 seconds (strictly within the 2-minute window)
   const initialEndsAt = new Date(Date.now() + 60_000);
   const auctionId = await createAuction(sellerToken, {
+    starts_at: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
     ends_at: initialEndsAt.toISOString(),
   });
 
