@@ -22,7 +22,7 @@ SELECT setval('auctions_id_seq', (SELECT MAX(id) FROM auctions));
 INSERT INTO bids (auction_id, bidder_id, amount, status, reason, created_at) VALUES
   (1, 3, 510000.00, 'ACCEPTED', NULL, now() - INTERVAL '1 day'),
   (1, 2, 520000.00, 'ACCEPTED', NULL, now() - INTERVAL '12 hours'),
-  (2, 2, 260000.00, 'ACCEPTED', NULL, now() - INTERVAL '18 hours'),
+  (2, 2, 26000.00, 'ACCEPTED', NULL, now() - INTERVAL '18 hours'),
   (2, 3, 28000.00, 'ACCEPTED', NULL, now() - INTERVAL '6 hours'),
   (3, 2, 165000.00, 'ACCEPTED', NULL, now() - INTERVAL '1 hour')
 ON CONFLICT DO NOTHING;
