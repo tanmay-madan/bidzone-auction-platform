@@ -15,6 +15,9 @@ const pool = new Pool({
   user: process.env.DB_USER || "postgres",
   password: process.env.DB_PASSWORD || "postgres",
   database: process.env.DB_NAME || "bidzone",
+  max: Number(process.env.DB_POOL_MAX) || 25,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000,
 });
 
 pool.on("error", (err) => {
