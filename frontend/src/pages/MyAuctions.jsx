@@ -2,10 +2,13 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../services/api";
 import { formatINR, formatTimeRemaining } from "../utils/format";
+import { applyLiveEvent, useLiveEvents } from "../context/LiveContext";
 
 export default function MyAuctions() {
   const [auctions, setAuctions] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  useLiveEvents((kind, data) => setAuctions((list) => applyLiveEvent(list, kind, data)));
 
   useEffect(() => {
     api

@@ -1,12 +1,16 @@
 import { useEffect, useState } from "react";
 import api from "../services/api";
 import AuctionCard from "../components/AuctionCard";
+import { applyLiveEvent, useLiveEvents } from "../context/LiveContext";
 
 export default function Browse() {
   const [auctions, setAuctions] = useState([]);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState("ending");
   const [loading, setLoading] = useState(true);
+
+  // Prices, bid counts and closings update live without refreshing.
+  useLiveEvents((kind, data) => setAuctions((list) => applyLiveEvent(list, kind, data)));
 
   useEffect(() => {
     setLoading(true);

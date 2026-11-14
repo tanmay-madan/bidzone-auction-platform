@@ -3,11 +3,14 @@ import { Link } from "react-router-dom";
 import api from "../services/api";
 import AuctionCard from "../components/AuctionCard";
 import BackendStatus from "../components/BackendStatus";
+import { applyLiveEvent, useLiveEvents } from "../context/LiveContext";
 import { formatINR, formatTimeRemaining } from "../utils/format";
 
 export default function Home() {
   const [auctions, setAuctions] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  useLiveEvents((kind, data) => setAuctions((list) => applyLiveEvent(list, kind, data)));
 
   useEffect(() => {
     api

@@ -2,17 +2,27 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../services/api";
 import { formatINR, formatTimeRemaining } from "../utils/format";
+import { useLiveEvents } from "../context/LiveContext";
 
 export default function MyBids() {
   const [bids, setBids] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    api
+  function load() {
+    return api
       .get("/my-bids")
       .then((res) => setBids(res.data.bids))
       .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    load();
   }, []);
+
+  // Winning/Outbid/Won status updates live when any auction I'm in changes.
+  useLiveEvents((kind, data) => {
+    if (bids.some((b) => b.auction_id === data.auction_id)) load();
+  });
 
   return (
     <div className="mx-auto max-w-4xl px-6 py-12">
