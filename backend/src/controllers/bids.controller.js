@@ -1,4 +1,38 @@
 import pool from "../db/pool.js";
+import { publishEvent } from "../services/events.js";
+import { createNotification, inr } from "../services/notifications.js";
+
+// Phase 1: after an accepted bid, tell the previous leader they were
+// outbid, tell the seller about the new bid, and broadcast the new
+// price. Called with the transaction client, so all of it is committed
+// atomically with the bid itself — and only broadcast after COMMIT.
+async function afterAcceptedBid(db, { auction, auctionId, bidderId, amount, endsAt, extended }) {
+  const prevBidderId = auction.current_highest_bidder_id;
+  if (prevBidderId && prevBidderId !== bidderId) {
+    await createNotification(db, {
+      userId: prevBidderId,
+      auctionId,
+      type: "OUTBID",
+      title: `You've been outbid on "${auction.title}"`,
+      body: `The new highest bid is ${inr(amount)}. Bid again to take the lead.`,
+    });
+  }
+  await createNotification(db, {
+    userId: auction.seller_id,
+    auctionId,
+    type: "NEW_BID",
+    title: `New bid on "${auction.title}"`,
+    body: `Someone bid ${inr(amount)}.`,
+  });
+  await publishEvent(db, {
+    kind: "bid",
+    auction_id: auctionId,
+    amount,
+    bidder_id: bidderId,
+    ends_at: endsAt,
+    extended: Boolean(extended),
+  });
+}
 
 async function safeRollback(client) {
   try {
@@ -125,7 +159,8 @@ export async function placeBidOptimistic(req, res) {
 
     // 1. Plain read WITHOUT locking the row
     const auctionResult = await pool.query(
-      `SELECT id, seller_id, current_highest_bid, min_increment, starts_at, ends_at, status, version
+      `SELECT id, seller_id, title, current_highest_bid, current_highest_bidder_id, min_increment,
+              starts_at, ends_at, status, version
        FROM auctions WHERE id = $1`,
       [auctionId]
     );
@@ -221,6 +256,21 @@ export async function placeBidOptimistic(req, res) {
       [auctionId, bidderId, amount]
     );
 
+    try {
+      // Optimistic mode has no surrounding transaction, so these are
+      // best-effort and never fail an already-accepted bid.
+      await afterAcceptedBid(pool, {
+        auction,
+        auctionId,
+        bidderId,
+        amount,
+        endsAt: updateResult.rows[0].ends_at,
+        extended,
+      });
+    } catch (err) {
+      console.error("optimistic afterAcceptedBid error:", err.message);
+    }
+
     const body = {
       success: true,
       message: extended
@@ -294,8 +344,8 @@ export async function placeBid(req, res) {
 
     // Row-level lock: any other transaction bidding on this same auction blocks here
     const auctionResult = await client.query(
-      `SELECT id, seller_id, current_highest_bid, min_increment,
-              starts_at, ends_at, status, version
+      `SELECT id, seller_id, title, current_highest_bid, current_highest_bidder_id,
+              min_increment, starts_at, ends_at, status, version
        FROM auctions
        WHERE id = $1
        FOR UPDATE`,
@@ -416,6 +466,15 @@ export async function placeBid(req, res) {
        WHERE id = $3`,
       [amount, bidderId, auctionId]
     );
+
+    await afterAcceptedBid(client, {
+      auction,
+      auctionId,
+      bidderId,
+      amount,
+      endsAt: finalEndsAt,
+      extended,
+    });
 
     const body = {
       success: true,
