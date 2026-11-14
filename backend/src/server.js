@@ -1,6 +1,8 @@
 import dotenv from "dotenv";
 import app from "./app.js";
 import pool from "./db/pool.js";
+import { startEventListener, stopEventListener } from "./services/events.js";
+import { startSettlementScheduler } from "./workers/settlement.worker.js";
 
 dotenv.config();
 
@@ -10,9 +12,15 @@ const server = app.listen(PORT, () => {
   console.log(`BidZone API listening on http://localhost:${PORT}`);
 });
 
+// Phase 1: live events (LISTEN/NOTIFY -> SSE) and automatic settlement.
+startEventListener();
+const stopScheduler = startSettlementScheduler();
+
 // Graceful shutdown handling for clean container termination and connection draining
 function gracefulShutdown(signal) {
   console.log(`\nReceived ${signal}. Starting graceful shutdown...`);
+  stopScheduler();
+  stopEventListener(); // also ends open SSE streams so server.close() can finish
   server.close(async () => {
     console.log("HTTP server closed. Closing database connection pool...");
     try {

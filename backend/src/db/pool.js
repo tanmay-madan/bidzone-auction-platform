@@ -9,12 +9,18 @@ const { Pool } = pg;
 // transaction (BEGIN / SELECT ... FOR UPDATE / COMMIT) in later
 // phases goes through this pool so connection handling stays in one
 // place.
-const pool = new Pool({
+// Connection settings are exported so the live-events listener can open
+// its own dedicated (non-pooled) connection for LISTEN.
+export const dbConfig = {
   host: process.env.DB_HOST || "localhost",
   port: Number(process.env.DB_PORT) || 5432,
   user: process.env.DB_USER || "postgres",
   password: process.env.DB_PASSWORD || "postgres",
   database: process.env.DB_NAME || "bidzone",
+};
+
+const pool = new Pool({
+  ...dbConfig,
   max: Number(process.env.DB_POOL_MAX) || 25,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,

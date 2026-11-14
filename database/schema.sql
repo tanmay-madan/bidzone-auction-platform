@@ -65,3 +65,20 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (idem_key, bidder_id, auction_id)
 );
+
+-- Phase 1: notifications + settlement marker (see migrations/004)
+ALTER TABLE auctions ADD COLUMN IF NOT EXISTS settled_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_auctions_unsettled ON auctions (ends_at) WHERE settled_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id          SERIAL PRIMARY KEY,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  auction_id  INTEGER REFERENCES auctions(id) ON DELETE CASCADE,
+  type        VARCHAR(30) NOT NULL
+                CHECK (type IN ('OUTBID', 'NEW_BID', 'AUCTION_WON', 'AUCTION_SOLD', 'AUCTION_UNSOLD', 'AUCTION_LOST')),
+  title       VARCHAR(200) NOT NULL,
+  body        TEXT NOT NULL DEFAULT '',
+  is_read     BOOLEAN NOT NULL DEFAULT false,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_recent ON notifications (user_id, created_at DESC);
