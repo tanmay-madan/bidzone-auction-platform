@@ -19,3 +19,22 @@
     outline-offset: 2px;
   }
 }
+
+/* Phase 1: live-update feedback */
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.toast-in { animation: toast-in 0.3s ease-out both; }
+
+@keyframes price-flash {
+  0% { background-color: rgba(176, 141, 87, 0.28); }
+  100% { background-color: transparent; }
+}
+.price-flash { animation: price-flash 1.4s ease-out; border-radius: 6px; }
+
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.live-pulse { animation: live-pulse 1.6s ease-in-out infinite; }

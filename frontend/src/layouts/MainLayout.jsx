@@ -1,5 +1,6 @@
 import { Outlet } from "react-router-dom";
 import Navbar from "../components/Navbar";
+import Toaster from "../components/Toaster";
 
 export default function MainLayout() {
   return (
@@ -14,6 +15,7 @@ export default function MainLayout() {
           <span>Full Stack Development Project</span>
         </div>
       </footer>
+      <Toaster />
     </div>
   );
 }

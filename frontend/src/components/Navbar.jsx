@@ -1,5 +1,6 @@
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import NotificationBell from "./NotificationBell";
 
 const navLinks = [
   { to: "/browse", label: "Browse Auctions" },
@@ -46,6 +47,7 @@ export default function Navbar() {
         <div className="flex items-center gap-3">
           {isAuthed ? (
             <>
+              <NotificationBell />
               <span className="text-sm text-slate hidden sm:inline">
                 {user?.name}
               </span>
