@@ -4,6 +4,16 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#080A0F" />
+    <script>
+      // Apply the saved/OS theme before first paint (avoids a flash).
+      try {
+        var t = localStorage.getItem("bidzone_theme");
+        if (t !== "light" && t !== "dark") t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        document.documentElement.setAttribute("data-theme", t);
+      } catch (e) { document.documentElement.setAttribute("data-theme", "dark"); }
+    </script>
+    <meta name="description" content="BidZone — a concurrency-safe live auction marketplace." />
     <title>BidZone — Bid. Compete. Win.</title>
   </head>
   <body>

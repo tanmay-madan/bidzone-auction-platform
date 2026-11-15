@@ -1,40 +1,276 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ============================== THEME TOKENS ============================== */
+/* Values are "R G B" triplets so Tailwind can add opacity (bg-gold/20). */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: 8 10 15;
+  --surface: 17 20 28;
+  --surface-2: 23 27 37;
+  --surface-3: 31 36 49;
+  --line: 255 255 255;
+  --line-soft: 255 255 255;
+  --line-strong: 255 255 255;
+  --text: 238 235 227;
+  --mute: 145 150 166;
+  --mute-2: 98 103 120;
+  --gold: 242 181 68;
+  --gold-light: 248 205 120;
+  --gold-dark: 201 143 31;
+  --on-gold: 10 12 17;
+  --live: 255 92 80;
+  --win: 61 220 151;
+  --info: 110 168 254;
+
+  /* glass + depth */
+  --line-a: 0.09;
+  --line-soft-a: 0.06;
+  --line-strong-a: 0.16;
+  --glass: rgb(20 24 34 / 0.55);
+  --glass-strong: rgb(16 19 27 / 0.78);
+  --glass-border: rgb(255 255 255 / 0.09);
+  --glass-highlight: rgb(255 255 255 / 0.07);
+  --shadow-card: 0 1px 0 0 rgb(255 255 255 / 0.04) inset, 0 24px 60px -24px rgb(0 0 0 / 0.7);
+  --blob-a: 242 181 68;
+  --blob-b: 110 120 254;
+  --blob-c: 236 72 153;
+  --blob-opacity: 0.22;
+  --grid-line: rgb(255 255 255 / 0.035);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: 243 241 236;
+  --surface: 255 255 255;
+  --surface-2: 249 247 242;
+  --surface-3: 238 235 228;
+  --line: 20 22 30;
+  --line-soft: 20 22 30;
+  --line-strong: 20 22 30;
+  --text: 22 24 32;
+  --mute: 88 94 110;
+  --mute-2: 132 137 150;
+  --gold: 186 128 18;
+  --gold-light: 205 146 34;
+  --gold-dark: 150 102 12;
+  --on-gold: 255 255 255;
+  --live: 212 56 46;
+  --win: 18 140 88;
+  --info: 37 99 214;
+
+  --line-a: 0.1;
+  --line-soft-a: 0.06;
+  --line-strong-a: 0.18;
+  --glass: rgb(255 255 255 / 0.55);
+  --glass-strong: rgb(255 255 255 / 0.8);
+  --glass-border: rgb(255 255 255 / 0.75);
+  --glass-highlight: rgb(255 255 255 / 0.9);
+  --shadow-card: 0 1px 2px rgb(20 22 30 / 0.05), 0 20px 50px -24px rgb(60 50 30 / 0.28);
+  --blob-a: 242 181 68;
+  --blob-b: 120 140 255;
+  --blob-c: 255 140 190;
+  --blob-opacity: 0.35;
+  --grid-line: rgb(20 22 30 / 0.05);
+}
 
 @layer base {
   html {
     scroll-behavior: smooth;
   }
   body {
-    @apply bg-paper text-ink font-sans antialiased;
+    @apply bg-night text-ivory font-sans antialiased;
+    transition: background-color 0.4s ease, color 0.4s ease;
   }
   ::selection {
-    @apply bg-brass/30;
+    @apply bg-gold/30 text-ivory;
   }
   :focus-visible {
-    outline: 2px solid #1B2A4A;
+    outline: 2px solid rgb(var(--gold));
     outline-offset: 2px;
+  }
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  [data-theme="dark"] input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+    filter: invert(0.8);
+    cursor: pointer;
+  }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: rgb(var(--mute) / 0.25); border-radius: 99px; border: 2px solid transparent; background-clip: padding-box; }
+  ::-webkit-scrollbar-track { background: transparent; }
+}
+
+@layer components {
+  .container-x {
+    @apply mx-auto max-w-7xl px-5 sm:px-8;
+  }
+
+  /* ---------- Glassmorphism ---------- */
+  .glass {
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(22px) saturate(170%);
+    backdrop-filter: blur(22px) saturate(170%);
+    border: 1px solid var(--glass-border);
+    box-shadow: inset 0 1px 0 var(--glass-highlight), var(--shadow-card);
+  }
+  .glass-strong {
+    background: var(--glass-strong);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    backdrop-filter: blur(28px) saturate(180%);
+    border: 1px solid var(--glass-border);
+    box-shadow: inset 0 1px 0 var(--glass-highlight), var(--shadow-card);
+  }
+  .panel {
+    @apply glass rounded-xl;
+  }
+  /* Small frosted chip for badges laid over photos. */
+  .chip-glass {
+    @apply rounded-full border border-white/15 bg-black/35 text-white backdrop-blur-md;
+  }
+
+  .input {
+    @apply w-full rounded border border-line bg-night-800/60 px-3.5 py-2.5 text-ivory placeholder:text-mute-dark
+      outline-none backdrop-blur transition focus:border-gold/70 focus:ring-4 focus:ring-gold/15;
+  }
+  .label {
+    @apply mb-1.5 block text-[13px] font-medium text-mute;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded px-5 py-2.5 text-sm font-semibold transition
+      disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-gold {
+    @apply btn text-ongold active:scale-[.98];
+    background: linear-gradient(180deg, rgb(var(--gold-light)) 0%, rgb(var(--gold)) 55%, rgb(var(--gold-dark)) 140%);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.35), 0 8px 24px -10px rgb(var(--gold) / 0.8);
+  }
+  .btn-gold:hover {
+    filter: brightness(1.06);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.4), 0 10px 32px -8px rgb(var(--gold) / 0.9);
+  }
+  .btn-ghost {
+    @apply btn glass text-ivory hover:text-gold;
+  }
+  .eyebrow {
+    @apply font-mono text-[11px] uppercase tracking-[0.18em] text-mute;
+  }
+  .num {
+    @apply font-mono tabular-nums tracking-tight;
+  }
+  .text-gradient {
+    background: linear-gradient(100deg, rgb(var(--gold-light)), rgb(var(--gold)) 40%, rgb(var(--blob-c)) 110%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .skeleton {
+    background: linear-gradient(90deg, rgb(var(--surface-2)) 0px, rgb(var(--surface-3)) 120px, rgb(var(--surface-2)) 240px);
+    background-size: 800px 100%;
+    @apply animate-shimmer;
+  }
+  .grid-bg {
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+  }
+
+  /* ---------- Cursor spotlight (position set from JS) ---------- */
+  .spotlight {
+    position: relative;
+    isolation: isolate;
+  }
+  .spotlight::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 50%), rgb(var(--gold) / 0.13), transparent 45%);
+    z-index: 1;
+  }
+  .spotlight:hover::after {
+    opacity: 1;
+  }
+
+  /* ---------- Scroll reveal ---------- */
+  .reveal {
+    opacity: 0;
+    transform: translateY(18px);
+    transition: opacity 0.7s cubic-bezier(.2,.7,.2,1), transform 0.7s cubic-bezier(.2,.7,.2,1);
+  }
+  .reveal.in {
+    opacity: 1;
+    transform: none;
   }
 }
 
-/* Phase 1: live-update feedback */
-@keyframes toast-in {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
+/* ============================== AURORA BACKGROUND ============================== */
+.aurora {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
 }
-.toast-in { animation: toast-in 0.3s ease-out both; }
+.aurora .blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(90px);
+  opacity: var(--blob-opacity);
+  will-change: transform;
+}
+.aurora .b1 { width: 46vw; height: 46vw; left: -10vw; top: -14vw; background: rgb(var(--blob-a)); animation: drift1 26s ease-in-out infinite; }
+.aurora .b2 { width: 40vw; height: 40vw; right: -12vw; top: 10vh; background: rgb(var(--blob-b)); animation: drift2 32s ease-in-out infinite; }
+.aurora .b3 { width: 34vw; height: 34vw; left: 30vw; bottom: -18vw; background: rgb(var(--blob-c)); animation: drift3 38s ease-in-out infinite; opacity: calc(var(--blob-opacity) * 0.7); }
+.aurora .grain {
+  position: absolute;
+  inset: -50%;
+  opacity: 0.05;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+@keyframes drift1 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(14vw, 10vh) scale(1.15); } }
+@keyframes drift2 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-16vw, 18vh) scale(.9); } }
+@keyframes drift3 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-10vw, -14vh) scale(1.2); } }
 
-@keyframes price-flash {
-  0% { background-color: rgba(176, 141, 87, 0.28); }
-  100% { background-color: transparent; }
+/* ============================== CONFETTI ============================== */
+.confetti {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 60;
+  overflow: hidden;
 }
-.price-flash { animation: price-flash 1.4s ease-out; border-radius: 6px; }
+.confetti i {
+  position: absolute;
+  top: -12px;
+  width: 8px;
+  height: 14px;
+  border-radius: 2px;
+  animation: confetti-fall linear forwards;
+}
+@keyframes confetti-fall {
+  to { transform: translate3d(var(--dx), 110vh, 0) rotate(var(--rot)); opacity: 0.9; }
+}
 
-@keyframes live-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
+/* ============================== MOTION SAFETY ============================== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal { opacity: 1; transform: none; }
+  .aurora .blob { animation: none; }
 }
-.live-pulse { animation: live-pulse 1.6s ease-in-out infinite; }

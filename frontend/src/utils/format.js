@@ -13,16 +13,29 @@ export function formatTimeRemaining(endsAt, now = Date.now()) {
   const diffMs = new Date(endsAt).getTime() - now;
   if (diffMs <= 0) return "Ended";
 
-  const totalMinutes = Math.floor(diffMs / 60000);
-  const days = Math.floor(totalMinutes / 1440);
-  const hours = Math.floor((totalMinutes % 1440) / 60);
-  const minutes = totalMinutes % 60;
+  const totalSeconds = Math.floor(diffMs / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
 
-  if (days > 0) return `${days}d ${hours}h`;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  // Under an hour, show seconds so the live countdown visibly ticks.
-  const seconds = Math.floor((diffMs % 60000) / 1000);
+  if (days > 0) return `${days}d ${hours}h ${minutes}m`;
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
   return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+}
+
+// Breaks a remaining duration into parts for the large countdown blocks.
+export function timeParts(endsAt, now = Date.now()) {
+  const diffMs = Math.max(0, new Date(endsAt).getTime() - now);
+  const s = Math.floor(diffMs / 1000);
+  return {
+    done: diffMs <= 0,
+    ms: diffMs,
+    days: Math.floor(s / 86400),
+    hours: Math.floor((s % 86400) / 3600),
+    minutes: Math.floor((s % 3600) / 60),
+    seconds: s % 60,
+  };
 }
 
 export function timeAgo(dateStr) {
@@ -33,4 +46,22 @@ export function timeAgo(dateStr) {
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
   return `${Math.floor(hours / 24)}d ago`;
+}
+
+export function initials(name = "") {
+  return (
+    name
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((p) => p[0].toUpperCase())
+      .join("") || "?"
+  );
+}
+
+// Deterministic hue per string so placeholders/avatars stay stable.
+export function hueFor(str = "") {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) % 360;
+  return h;
 }

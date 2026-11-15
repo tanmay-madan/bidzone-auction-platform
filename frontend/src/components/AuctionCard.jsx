@@ -1,62 +1,59 @@
 import { Link } from "react-router-dom";
-import { formatINR, formatTimeRemaining } from "../utils/format";
 import useNow from "../hooks/useNow";
+import { AuctionImage, CountdownText, Icon, Money, StatusBadge } from "./ui";
 
-export default function AuctionCard({ auction }) {
-  const {
-    id,
-    title,
-    image_url,
-    current_highest_bid,
-    bid_count,
-    ends_at,
-    status,
-    _flash,
-  } = auction;
-  const now = useNow(1000); // live countdown
+export default function AuctionCard({ auction, index = 0 }) {
+  const { id, title, image_url, current_highest_bid, starting_price, bid_count, ends_at, starts_at, status, seller_name, _flash } =
+    auction;
+  const now = useNow(1000);
   const ended = status === "CLOSED" || new Date(ends_at).getTime() <= now;
+  const isUpcoming = !ended && status === "UPCOMING";
+  const bids = Number(bid_count) || 0;
 
   return (
-    <article className="group rounded-lg border border-border bg-white overflow-hidden hover:shadow-[0_4px_20px_rgba(27,42,74,0.08)] transition-shadow">
-      <div className="aspect-[4/3] overflow-hidden bg-[#F1EFEA]">
-        <img
-          src={image_url || "https://picsum.photos/seed/bidzone-fallback/600/450"}
-          alt={title}
-          className="h-full w-full object-cover group-hover:scale-[1.03] transition-transform duration-300"
-        />
-      </div>
-      <div className="p-4">
-        <div className="flex items-center justify-between gap-2">
-          <h3 className="font-display text-lg text-ink leading-snug">{title}</h3>
-          {ended && (
-            <span className="text-xs text-slate border border-border rounded px-2 py-0.5 shrink-0">
-              Closed
-            </span>
-          )}
+    <Link
+      to={`/auctions/${id}`}
+      style={{ animationDelay: `${Math.min(index, 8) * 60}ms` }}
+      className={`spotlight group panel relative block overflow-hidden animate-rise transition duration-300 hover:-translate-y-1.5 hover:shadow-glow ${
+        _flash ? "ring-1 ring-gold/60" : ""
+      }`}
+    >
+      <div className="relative aspect-[4/3] overflow-hidden rounded-t-xl">
+        <AuctionImage src={image_url} title={title} className="h-full w-full transition-transform duration-700 group-hover:scale-[1.06]" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/15 to-transparent" />
+        <div className="absolute left-3 top-3">
+          <StatusBadge status={ended ? "CLOSED" : status} />
         </div>
-
-        <div className="mt-3 flex items-end justify-between">
-          <div>
-            <p className="text-xs text-slate">Current bid</p>
-            <p key={_flash || "static"} className={`text-lg font-semibold text-navy tabular-nums ${_flash ? "price-flash -mx-1 px-1" : ""}`}>
-              {formatINR(current_highest_bid)}
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-slate">{bid_count} bids</p>
-            <p className="text-sm text-brass-dark font-medium tabular-nums">
-              {ended ? "Ended" : `Ends in ${formatTimeRemaining(ends_at, now)}`}
-            </p>
-          </div>
+        <div className="chip-glass absolute right-3 top-3 inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px]">
+          <Icon.Gavel className="h-3.5 w-3.5 text-gold-light" />
+          <span key={bids} className="num animate-pop">{bids}</span> {bids === 1 ? "bid" : "bids"}
         </div>
-
-        <Link
-          to={`/auctions/${id}`}
-          className="mt-4 block text-center w-full rounded border border-navy text-navy text-sm font-medium py-2 hover:bg-navy hover:text-paper transition-colors"
-        >
-          {ended ? "View Result" : "Bid Now"}
-        </Link>
+        <h3 className="absolute bottom-3 left-4 right-4 font-display text-[26px] leading-[1.05] text-white line-clamp-2">{title}</h3>
       </div>
-    </article>
+
+      <div className="relative z-[2] flex items-end justify-between gap-3 p-4 pt-3.5">
+        <div>
+          <p className="eyebrow">{ended ? "Final price" : bids ? "Current bid" : "Starting at"}</p>
+          <p key={_flash || "p"} className={`num mt-1 text-xl font-semibold text-gold ${_flash ? "-mx-1 rounded px-1 animate-flash" : ""}`}>
+            <Money value={bids ? current_highest_bid : starting_price ?? current_highest_bid} />
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="eyebrow">{ended ? "Status" : isUpcoming ? "Starts in" : "Ends in"}</p>
+          <p className="mt-1 inline-flex items-center gap-1 text-sm text-ivory">
+            <Icon.Clock className="h-3.5 w-3.5 text-mute" />
+            {ended ? <span className="text-mute">Closed</span> : <CountdownText endsAt={isUpcoming ? starts_at : ends_at} />}
+          </p>
+        </div>
+      </div>
+      {seller_name && (
+        <div className="relative z-[2] flex items-center justify-between border-t border-line-soft px-4 py-2.5 text-xs text-mute">
+          <span>by {seller_name}</span>
+          <span className="inline-flex translate-x-[-4px] items-center gap-1 font-medium text-gold opacity-0 transition duration-300 group-hover:translate-x-0 group-hover:opacity-100">
+            {ended ? "View result" : "Place bid"} <Icon.Arrow className="h-3.5 w-3.5" />
+          </span>
+        </div>
+      )}
+    </Link>
   );
 }

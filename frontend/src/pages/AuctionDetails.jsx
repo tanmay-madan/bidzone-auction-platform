@@ -4,7 +4,8 @@ import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { useLive, useLiveEvents } from "../context/LiveContext";
 import useNow from "../hooks/useNow";
-import { formatINR, formatTimeRemaining, timeAgo } from "../utils/format";
+import { formatINR, timeAgo } from "../utils/format";
+import { Alert, AuctionImage, Avatar, Confetti, CountdownBlocks, Icon, Money, StatusBadge } from "../components/ui";
 
 export default function AuctionDetails() {
   const { id } = useParams();
@@ -19,39 +20,55 @@ export default function AuctionDetails() {
   const [success, setSuccess] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [liveNote, setLiveNote] = useState("");
+  const [notFound, setNotFound] = useState(false);
+  const [flashKey, setFlashKey] = useState(0);
+  const [liveNote, setLiveNote] = useState(null);
+  const [celebrate, setCelebrate] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const lastPrice = useRef(null);
   const reloadedAtEnd = useRef(false);
 
   const load = useCallback(async () => {
-    const [auctionRes, bidsRes] = await Promise.all([
-      api.get(`/auctions/${id}`),
-      api.get(`/auctions/${id}/bids`),
-    ]);
-    setAuction(auctionRes.data.auction);
-    setBids(bidsRes.data.bids);
-    setLoading(false);
+    try {
+      const [auctionRes, bidsRes] = await Promise.all([api.get(`/auctions/${id}`), api.get(`/auctions/${id}/bids`)]);
+      const a = auctionRes.data.auction;
+      if (lastPrice.current !== null && lastPrice.current !== a.current_highest_bid) setFlashKey((k) => k + 1);
+      lastPrice.current = a.current_highest_bid;
+      setAuction(a);
+      setBids(bidsRes.data.bids);
+    } catch (err) {
+      if (err.response?.status === 404) setNotFound(true);
+    } finally {
+      setLoading(false);
+    }
   }, [id]);
 
   useEffect(() => {
     reloadedAtEnd.current = false;
+    lastPrice.current = null;
     load();
   }, [load]);
 
-  // Live updates: someone else's bid, an anti-sniping extension, or the
-  // auction being settled all refresh this page instantly (no polling).
+  // Live: other people's bids, anti-sniping extensions and settlement all
+  // refresh the page instantly via the SSE stream.
   useLiveEvents((kind, data) => {
     if (data.auction_id !== Number(id)) return;
     if (kind === "bid" && data.bidder_id !== user?.id) {
-      setLiveNote(
-        `New bid: ${formatINR(data.amount)}${data.extended ? " — closing time extended by 2 minutes" : ""}`
-      );
-      setTimeout(() => setLiveNote(""), 5000);
+      setLiveNote({ name: data.bidder_name, amount: data.amount, extended: data.extended, key: Date.now() });
+      setTimeout(() => setLiveNote(null), 5000);
     }
+    if (kind === "closed" && user && data.winner_id === user.id) setCelebrate(true);
     load();
   });
 
-  // When the countdown reaches zero, refresh once so the page shows the
-  // closed state (the backend's settlement then confirms the winner).
+  // Fallback if the live stream is down: light polling.
+  useEffect(() => {
+    if (connected || !auction || auction.status === "CLOSED") return;
+    const t = setInterval(load, 10000);
+    return () => clearInterval(t);
+  }, [connected, auction, load]);
+
+  // When the countdown hits zero, refresh once to show the closed state.
   const endsAtMs = auction ? new Date(auction.ends_at).getTime() : null;
   useEffect(() => {
     if (!auction || auction.status === "CLOSED" || reloadedAtEnd.current) return;
@@ -72,223 +89,359 @@ export default function AuctionDetails() {
     setError("");
     setSuccess("");
     setSubmitting(true);
-    const idemKey =
-      window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+    const idemKey = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
     try {
-      const res = await api.post(
-        `/auctions/${id}/bids`,
-        { amount: Number(amount) },
-        { headers: { "Idempotency-Key": idemKey } }
-      );
+      const res = await api.post(`/auctions/${id}/bids`, { amount: Number(amount) }, { headers: { "Idempotency-Key": idemKey } });
       setSuccess(res.data.message);
       setAmount("");
       await load();
     } catch (err) {
       setError(err.response?.data?.message || "Could not place bid.");
+      await load();
     } finally {
       setSubmitting(false);
     }
   }
 
-  if (loading) {
-    return <div className="mx-auto max-w-4xl px-6 py-16 text-slate">Loading auction...</div>;
-  }
-  if (!auction) {
-    return <div className="mx-auto max-w-4xl px-6 py-16 text-slate">Auction not found.</div>;
+  async function share() {
+    try {
+      if (navigator.share) await navigator.share({ title: auction.title, url: window.location.href });
+      else {
+        await navigator.clipboard.writeText(window.location.href);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1800);
+      }
+    } catch {
+      // user cancelled
+    }
   }
 
-  const minNextBid = Number(auction.current_highest_bid) + Number(auction.min_increment);
+  if (loading) {
+    return (
+      <div className="container-x grid gap-10 py-12 lg:grid-cols-[1.2fr_1fr]">
+        <div className="skeleton aspect-[4/3] rounded-xl" />
+        <div className="space-y-4">
+          <div className="skeleton h-12 w-3/4 rounded" />
+          <div className="skeleton h-5 w-1/2 rounded" />
+          <div className="skeleton h-72 rounded-xl" />
+        </div>
+      </div>
+    );
+  }
+  if (notFound || !auction) {
+    return (
+      <div className="container-x py-24 text-center">
+        <p className="font-display text-6xl">Lot not found</p>
+        <p className="mt-3 text-mute">This auction may have been removed.</p>
+        <Link to="/browse" className="btn-gold mt-8">
+          Back to auctions
+        </Link>
+      </div>
+    );
+  }
+
+  const inc = Number(auction.min_increment);
+  const minNextBid = Number(auction.current_highest_bid) + inc;
   const timeUp = now >= endsAtMs;
   const isClosed = auction.status === "CLOSED" || timeUp;
-  const isUpcoming = auction.status === "UPCOMING" && !timeUp;
+  const isUpcoming = !timeUp && auction.status === "UPCOMING";
   const isOwnAuction = user && user.id === auction.seller_id;
   const isWinning = user && user.id === auction.current_highest_bidder_id;
-  const hasWinner = Boolean(auction.current_highest_bidder_id);
-  const urgent = !isClosed && !isUpcoming && endsAtMs - now < 2 * 60 * 1000;
+  const hasBids = Number(auction.bid_count) > 0;
+  const quick = [minNextBid, minNextBid + inc, minNextBid + inc * 4];
+  const lift =
+    Number(auction.starting_price) > 0
+      ? ((Number(auction.current_highest_bid) - Number(auction.starting_price)) / Number(auction.starting_price)) * 100
+      : 0;
+  const maxBid = Math.max(...bids.map((b) => Number(b.amount)), 1);
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-12">
-      {/* Winner banner once the auction has ended */}
+    <div className="container-x py-8">
+      {celebrate && <Confetti />}
+
+      <nav className="mb-6 flex items-center justify-between gap-4 text-sm text-mute">
+        <div className="flex min-w-0 items-center gap-2">
+          <Link to="/browse" className="hover:text-ivory">
+            Explore
+          </Link>
+          <span className="text-mute-dark">/</span>
+          <span className="truncate text-ivory">{auction.title}</span>
+        </div>
+        <button onClick={share} className="glass inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs text-mute transition hover:text-ivory">
+          {copied ? <Icon.Check className="h-3.5 w-3.5 text-win" /> : <Icon.Arrow className="h-3.5 w-3.5 -rotate-45" />}
+          {copied ? "Link copied" : "Share"}
+        </button>
+      </nav>
+
       {isClosed && (
         <WinnerBanner
           auction={auction}
           isWinning={isWinning}
           isOwnAuction={isOwnAuction}
           winnerName={bids[0]?.bidder_name}
-          hasWinner={hasWinner}
+          onCelebrate={() => setCelebrate(true)}
         />
       )}
 
-      <div className="grid md:grid-cols-2 gap-10">
-        <div>
-          <img
-            src={auction.image_url || "https://picsum.photos/seed/bidzone-fallback/700/525"}
-            alt={auction.title}
-            className="w-full aspect-[4/3] object-cover rounded-lg border border-border"
-          />
-        </div>
-
-        <div>
-          <h1 className="font-display text-3xl text-ink">{auction.title}</h1>
-          <p className="mt-2 text-slate">{auction.description}</p>
-          <p className="mt-3 text-sm text-slate">Seller: {auction.seller_name}</p>
-
-          <div className="mt-6 rounded-lg border border-border p-5 bg-white">
-            <div className="flex items-end justify-between">
-              <div>
-                <p className="text-xs text-slate">{isClosed ? "Final Bid" : "Current Bid"}</p>
-                <p
-                  key={auction.current_highest_bid}
-                  className="price-flash font-display text-3xl text-navy tabular-nums -mx-1 px-1"
-                >
-                  {formatINR(auction.current_highest_bid)}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-xs text-slate">
-                  {isClosed ? "Ended" : isUpcoming ? "Starts in" : "Ends in"}
-                </p>
-                <p
-                  className={`text-sm font-medium tabular-nums ${
-                    urgent ? "text-[#B4463F]" : "text-brass-dark"
-                  }`}
-                >
-                  {isClosed
-                    ? "Auction closed"
-                    : formatTimeRemaining(isUpcoming ? auction.starts_at : auction.ends_at, now)}
-                </p>
-              </div>
+      <div className="grid gap-10 lg:grid-cols-[1.2fr_1fr]">
+        {/* ------------------------------ LEFT ------------------------------ */}
+        <div className="space-y-8">
+          <div className="panel relative overflow-hidden">
+            <AuctionImage src={auction.image_url} title={auction.title} className="aspect-[4/3] w-full" />
+            <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/50 to-transparent" />
+            <div className="absolute left-4 top-4 flex gap-2">
+              <StatusBadge status={isClosed ? "CLOSED" : auction.status} />
+              <span className="chip-glass px-2.5 py-1 font-mono text-[10.5px] uppercase tracking-[0.14em]">
+                Lot #{String(auction.id).padStart(4, "0")}
+              </span>
             </div>
-
-            {liveNote && (
-              <p className="toast-in mt-3 rounded bg-[#F6F3EC] border border-brass/40 px-3 py-2 text-sm text-ink">
-                {liveNote}
-              </p>
-            )}
-
-            {isWinning && !isClosed && (
-              <p className="mt-3 text-sm text-success font-medium">You are currently winning.</p>
-            )}
-
-            {!isClosed && !isUpcoming && (
-              <>
-                <p className="mt-4 text-xs text-slate">
-                  Next minimum bid: {formatINR(minNextBid)}
-                </p>
-
-                {!isAuthed ? (
-                  <Link
-                    to="/login"
-                    state={{ from: { pathname: `/auctions/${id}` } }}
-                    className="mt-3 block text-center w-full rounded bg-navy text-paper py-2.5 font-medium hover:bg-navy-light transition-colors"
-                  >
-                    Log in to bid
-                  </Link>
-                ) : isOwnAuction ? (
-                  <p className="mt-3 text-sm text-slate">You can't bid on your own auction.</p>
-                ) : (
-                  <form onSubmit={handleBid} className="mt-3 flex gap-2">
-                    <input
-                      type="number"
-                      required
-                      min={minNextBid}
-                      step="1"
-                      placeholder={minNextBid}
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                      className="flex-1 rounded border border-border px-3 py-2 focus:border-navy outline-none"
-                    />
-                    <button
-                      type="submit"
-                      disabled={submitting}
-                      className="rounded bg-navy text-paper px-5 font-medium hover:bg-navy-light transition-colors disabled:opacity-60"
-                    >
-                      {submitting ? "Placing..." : "Place Bid"}
-                    </button>
-                  </form>
-                )}
-
-                {error && <p className="mt-2 text-sm text-[#B4463F]">{error}</p>}
-                {success && <p className="mt-2 text-sm text-success">{success}</p>}
-              </>
-            )}
           </div>
 
-          <div className="mt-8">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="font-display text-xl text-ink">Bid History</h2>
+          <div>
+            <h1 className="font-display text-5xl leading-[1] text-ivory sm:text-6xl">{auction.title}</h1>
+            <div className="mt-4 flex items-center gap-3 text-sm text-mute">
+              <Avatar name={auction.seller_name} size={28} />
+              <span>
+                Listed by <span className="text-ivory">{auction.seller_name}</span>
+              </span>
+            </div>
+            {auction.description && <p className="mt-6 max-w-2xl whitespace-pre-line leading-relaxed text-mute">{auction.description}</p>}
+          </div>
+
+          <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[
+              ["Starting price", formatINR(auction.starting_price)],
+              ["Min increment", formatINR(auction.min_increment)],
+              ["Total bids", auction.bid_count],
+              ["Price lift", `${lift >= 0 ? "+" : ""}${lift.toFixed(1)}%`],
+            ].map(([k, v]) => (
+              <div key={k} className="glass spotlight rounded-lg px-4 py-3.5">
+                <dt className="eyebrow text-[10px]">{k}</dt>
+                <dd className="num mt-1.5 text-lg font-semibold text-ivory">{v}</dd>
+              </div>
+            ))}
+          </dl>
+
+          {/* Bid history with relative bars */}
+          <section>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="font-display text-3xl text-ivory">Bid history</h2>
               {!isClosed && (
-                <span className="inline-flex items-center gap-1.5 text-xs text-slate">
-                  <span
-                    className={`h-2 w-2 rounded-full ${connected ? "bg-success live-pulse" : "bg-slate-light"}`}
-                  />
+                <span className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.12em] text-mute">
+                  <span className={`h-1.5 w-1.5 rounded-full ${connected ? "animate-pulse bg-win" : "bg-mute"}`} />
                   {connected ? "Live" : "Reconnecting…"}
                 </span>
               )}
             </div>
             {bids.length === 0 ? (
-              <p className="text-sm text-slate">No bids yet. Be the first.</p>
+              <div className="glass rounded-xl px-6 py-10 text-center text-mute">No bids yet. The opening bid could be yours.</div>
             ) : (
-              <ul className="divide-y divide-border rounded-lg border border-border bg-white">
+              <ol className="panel divide-y divide-line-soft overflow-hidden">
                 {bids.map((bid, i) => (
-                  <li
-                    key={bid.id}
-                    className={`flex justify-between px-4 py-3 text-sm ${i === 0 ? "bg-[#F6F3EC]" : ""}`}
-                  >
-                    <span className={`font-medium ${i === 0 ? "text-navy" : "text-ink"}`}>
-                      {formatINR(bid.amount)}
+                  <li key={bid.id} className={`relative flex items-center gap-4 px-5 py-3.5 ${i === 0 ? "animate-feed-in" : ""}`}>
+                    <span
+                      className={`absolute inset-y-0 left-0 ${i === 0 ? "bg-gold/[0.09]" : "bg-ivory/[0.025]"}`}
+                      style={{ width: `${(Number(bid.amount) / maxBid) * 100}%` }}
+                    />
+                    <span className={`num relative w-6 text-sm ${i === 0 ? "text-gold" : "text-mute-dark"}`}>
+                      {i === 0 ? <Icon.Trophy className="h-4 w-4" /> : `#${i + 1}`}
                     </span>
-                    <span className="text-slate">
-                      {bid.bidder_name}
-                      {i === 0 && isClosed && (
-                        <span className="ml-1.5 text-xs font-medium text-brass-dark">Winner</span>
-                      )}
+                    <span className="relative">
+                      <Avatar name={bid.bidder_name} size={32} ring={i === 0} />
                     </span>
-                    <span className="text-slate">{timeAgo(bid.created_at)}</span>
+                    <div className="relative min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-ivory">
+                        {bid.bidder_name}
+                        {user && bid.bidder_name === user.name && <span className="ml-2 text-xs text-gold">(you)</span>}
+                        {i === 0 && isClosed && <span className="ml-2 rounded-full bg-gold/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gold">Winner</span>}
+                      </p>
+                      <p className="text-xs text-mute">{timeAgo(bid.created_at)}</p>
+                    </div>
+                    <span className={`num relative text-base font-semibold ${i === 0 ? "text-gold" : "text-ivory"}`}>{formatINR(bid.amount)}</span>
                   </li>
                 ))}
-              </ul>
+              </ol>
             )}
-          </div>
+          </section>
         </div>
+
+        {/* ------------------------------ RIGHT ----------------------------- */}
+        <aside className="order-first lg:order-none lg:sticky lg:top-24 lg:self-start">
+          <div className="glass-strong spotlight overflow-hidden rounded-xl">
+            <div className="relative z-[2] border-b border-line p-6">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="eyebrow">{isClosed ? "Final price" : hasBids ? "Current highest bid" : "Opening price"}</p>
+                  <p key={flashKey} className={`num -mx-1 mt-2 rounded px-1 text-5xl font-semibold text-gold ${flashKey ? "animate-flash" : ""}`}>
+                    <Money value={auction.current_highest_bid} />
+                  </p>
+                </div>
+                {isWinning && !isClosed && (
+                  <span className="inline-flex shrink-0 animate-pop items-center gap-1.5 rounded-full border border-win/30 bg-win/10 px-3 py-1 text-xs font-semibold text-win">
+                    <Icon.Trophy className="h-3.5 w-3.5" /> You're winning
+                  </span>
+                )}
+              </div>
+              {liveNote && (
+                <div key={liveNote.key} className="mt-4 flex animate-slide-in items-center gap-2 rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-sm">
+                  <Icon.Bolt className="h-4 w-4 shrink-0 text-gold" />
+                  <span className="text-ivory">
+                    <b className="font-semibold">{liveNote.name}</b> just bid <span className="num text-gold">{formatINR(liveNote.amount)}</span>
+                    {liveNote.extended && <span className="text-mute"> · closing extended 2 min</span>}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="relative z-[2] space-y-5 p-6">
+              {isClosed ? (
+                <div className="rounded-lg border border-line bg-night-800/40 p-5 text-center">
+                  <Icon.Trophy className="mx-auto h-8 w-8 text-gold" />
+                  <p className="mt-3 font-display text-3xl">
+                    {auction.current_highest_bidder_id ? (isWinning ? "You won this lot!" : "Auction closed") : "Closed without bids"}
+                  </p>
+                  {auction.current_highest_bidder_id && (
+                    <p className="mt-1 text-sm text-mute">
+                      Sold for <span className="num text-gold">{formatINR(auction.current_highest_bid)}</span>
+                      {bids[0] && !isWinning && <> to {bids[0].bidder_name}</>}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <p className="eyebrow mb-2">{isUpcoming ? "Opens in" : "Closes in"}</p>
+                    <CountdownBlocks endsAt={isUpcoming ? auction.starts_at : auction.ends_at} />
+                    <p className="mt-2 text-xs text-mute">
+                      {new Date(isUpcoming ? auction.starts_at : auction.ends_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+                    </p>
+                  </div>
+
+                  {isUpcoming ? (
+                    <div className="rounded-lg border border-info/30 bg-info/10 px-4 py-3 text-sm text-info">Bidding opens when the countdown ends.</div>
+                  ) : !isAuthed ? (
+                    <Link to="/login" state={{ from: { pathname: `/auctions/${id}` } }} className="btn-gold w-full py-3 text-[15px]">
+                      Log in to place a bid
+                    </Link>
+                  ) : isOwnAuction ? (
+                    <div className="rounded-lg border border-line bg-night-800/40 px-4 py-3 text-sm text-mute">
+                      This is your listing — sellers can't bid on their own auctions.
+                    </div>
+                  ) : (
+                    <form onSubmit={handleBid} className="space-y-3">
+                      <div className="flex items-center justify-between text-sm">
+                        <label htmlFor="bid" className="text-mute">
+                          Your bid
+                        </label>
+                        <span className="text-mute">
+                          Min <span className="num text-ivory">{formatINR(minNextBid)}</span>
+                        </span>
+                      </div>
+                      <div className="relative">
+                        <span className="num pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-xl text-mute">₹</span>
+                        <input
+                          id="bid"
+                          type="number"
+                          required
+                          min={minNextBid}
+                          step="1"
+                          placeholder={String(minNextBid)}
+                          value={amount}
+                          onChange={(e) => setAmount(e.target.value)}
+                          className="input num py-3.5 pl-10 text-xl font-semibold"
+                        />
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        {quick.map((q) => (
+                          <button
+                            key={q}
+                            type="button"
+                            onClick={() => setAmount(String(q))}
+                            className={`num rounded border px-2 py-2 text-xs transition ${
+                              Number(amount) === q ? "border-gold bg-gold/15 text-gold" : "border-line text-mute hover:border-gold/50 hover:text-ivory"
+                            }`}
+                          >
+                            {formatINR(q)}
+                          </button>
+                        ))}
+                      </div>
+                      <button type="submit" disabled={submitting} className="btn-gold w-full py-3.5 text-[15px]">
+                        {submitting ? (
+                          <>
+                            <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                            Securing your bid…
+                          </>
+                        ) : (
+                          <>
+                            <Icon.Gavel className="h-4 w-4" /> Place bid
+                          </>
+                        )}
+                      </button>
+                    </form>
+                  )}
+
+                  {error && <Alert kind="error">{error}</Alert>}
+                  {success && <Alert kind="success">{success}</Alert>}
+                </>
+              )}
+            </div>
+
+            <div className="relative z-[2] grid grid-cols-3 divide-x divide-line border-t border-line text-center">
+              {[
+                [Icon.Lock, "Row-locked"],
+                [Icon.Key, "Idempotent"],
+                [Icon.Shield, "Server-validated"],
+              ].map(([I, t]) => (
+                <div key={t} className="flex flex-col items-center gap-1 px-2 py-3 text-[11px] text-mute">
+                  <I className="h-4 w-4 text-gold" />
+                  {t}
+                </div>
+              ))}
+            </div>
+          </div>
+        </aside>
       </div>
     </div>
   );
 }
 
-function WinnerBanner({ auction, isWinning, isOwnAuction, winnerName, hasWinner }) {
+function WinnerBanner({ auction, isWinning, isOwnAuction, winnerName, onCelebrate }) {
   const price = formatINR(auction.current_highest_bid);
+  const hasWinner = Boolean(auction.current_highest_bidder_id);
 
-  let title;
-  let text;
-  let tone = "border-border bg-white";
+  // Celebrate once when a winner opens their won auction.
+  useEffect(() => {
+    if (isWinning) onCelebrate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isWinning]);
+
+  let title, text, tone;
   if (!hasWinner) {
     title = "Auction ended without bids";
     text = isOwnAuction ? "No one bid on this item. You can list it again anytime." : "This item did not sell.";
+    tone = "from-mute/20";
   } else if (isWinning) {
     title = "Congratulations — you won this auction!";
     text = `Your winning bid was ${price}.`;
-    tone = "border-success/40 bg-[#EEF6F1]";
+    tone = "from-win/25";
   } else if (isOwnAuction) {
     title = `Your item sold for ${price}`;
     text = winnerName ? `Winning bidder: ${winnerName}.` : "The auction has a winning bidder.";
-    tone = "border-brass/50 bg-[#F6F3EC]";
+    tone = "from-gold/25";
   } else {
     title = "This auction has ended";
     text = `Sold for ${price}${winnerName ? ` to ${winnerName}` : ""}.`;
+    tone = "from-gold/15";
   }
 
   return (
-    <div className={`toast-in mb-8 flex items-center gap-4 rounded-lg border p-5 ${tone}`}>
-      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-navy text-brass-light">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 01-10 0V4z" />
-          <path d="M17 5h3v2a3 3 0 01-3 3M7 5H4v2a3 3 0 003 3" />
-        </svg>
+    <div className={`glass mb-8 flex animate-rise items-center gap-4 overflow-hidden rounded-xl bg-gradient-to-r ${tone} to-transparent p-5`}>
+      <div className="flex h-12 w-12 shrink-0 animate-pop items-center justify-center rounded-full btn-gold p-0">
+        <Icon.Trophy className="h-6 w-6" />
       </div>
       <div>
-        <p className="font-display text-xl text-ink">{title}</p>
-        <p className="text-sm text-slate mt-0.5">{text}</p>
+        <p className="font-display text-2xl text-ivory">{title}</p>
+        <p className="mt-0.5 text-sm text-mute">{text}</p>
       </div>
     </div>
   );
