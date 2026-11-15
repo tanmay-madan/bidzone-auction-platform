@@ -24,9 +24,14 @@ async function afterAcceptedBid(db, { auction, auctionId, bidderId, amount, ends
     title: `New bid on "${auction.title}"`,
     body: `Someone bid ${inr(amount)}.`,
   });
+  // Bidder names are already public in each auction's bid history, so
+  // the live activity feed may show them too.
+  const bidder = await db.query("SELECT name FROM users WHERE id = $1", [bidderId]);
   await publishEvent(db, {
     kind: "bid",
     auction_id: auctionId,
+    title: auction.title,
+    bidder_name: bidder.rows[0]?.name || "Someone",
     amount,
     bidder_id: bidderId,
     ends_at: endsAt,

@@ -15,6 +15,8 @@ export function LiveProvider({ children }) {
   const [notifications, setNotifications] = useState([]);
   const [unread, setUnread] = useState(0);
   const [toasts, setToasts] = useState([]);
+  // Most recent bids across the whole site, for the live activity feed.
+  const [activity, setActivity] = useState([]);
 
   const dismissToast = useCallback((id) => {
     setToasts((t) => t.filter((x) => x.toastId !== id));
@@ -62,6 +64,9 @@ export function LiveProvider({ children }) {
         data = JSON.parse(e.data);
       } catch {
         return;
+      }
+      if (kind === "bid") {
+        setActivity((list) => [{ ...data, at: Date.now(), key: `${data.auction_id}-${data.amount}-${Date.now()}` }, ...list].slice(0, 8));
       }
       if (kind === "notification") {
         const n = data.notification;
@@ -113,7 +118,7 @@ export function LiveProvider({ children }) {
 
   return (
     <LiveContext.Provider
-      value={{ connected, subscribe, notifications, unread, markAllRead, markRead, toasts, dismissToast }}
+      value={{ connected, subscribe, notifications, unread, markAllRead, markRead, toasts, dismissToast, activity }}
     >
       {children}
     </LiveContext.Provider>

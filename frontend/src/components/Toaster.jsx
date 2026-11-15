@@ -1,50 +1,46 @@
 import { Link } from "react-router-dom";
 import { useLive } from "../context/LiveContext";
 import { TYPE_STYLE } from "./NotificationBell";
+import { Icon } from "./ui";
 
-// Pop-up alerts for notifications that arrive live (outbid, won, sold…).
+// Frosted pop-up alerts for notifications that arrive live.
 export default function Toaster() {
   const { toasts, dismissToast } = useLive();
   if (!toasts.length) return null;
 
   return (
-    <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-3 w-[340px] max-w-[calc(100vw-2.5rem)]">
+    <div className="fixed bottom-24 right-4 z-50 flex w-[360px] max-w-[calc(100vw-2rem)] flex-col gap-3 md:bottom-6 md:right-6">
       {toasts.map((t) => {
-        const style = TYPE_STYLE[t.type] || TYPE_STYLE.NEW_BID;
-        const accent =
-          t.type === "OUTBID" ? "border-l-[#B4463F]" : t.type === "AUCTION_WON" ? "border-l-success" : "border-l-brass";
+        const s = TYPE_STYLE[t.type] || TYPE_STYLE.NEW_BID;
         return (
-          <div
-            key={t.toastId}
-            role="status"
-            className={`toast-in rounded-lg border border-border border-l-4 ${accent} bg-white shadow-[0_12px_40px_rgba(27,42,74,0.16)] p-4`}
-          >
+          <div key={t.toastId} role="status" className="glass-strong relative animate-slide-in overflow-hidden rounded-xl p-4">
             <div className="flex items-start gap-3">
-              <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${style.dot}`} />
+              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${s.tone}`}>
+                <s.icon className="h-[18px] w-[18px]" />
+              </span>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-ink leading-snug">{t.title}</p>
-                {t.body && <p className="text-xs text-slate mt-1">{t.body}</p>}
+                <p className="text-sm font-semibold leading-snug text-ivory">{t.title}</p>
+                {t.body && <p className="mt-1 text-xs text-mute">{t.body}</p>}
                 {t.auction_id && (
                   <Link
                     to={`/auctions/${t.auction_id}`}
                     onClick={() => dismissToast(t.toastId)}
-                    className="inline-block mt-2 text-xs font-medium text-navy hover:text-navy-light"
+                    className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-gold hover:text-gold-light"
                   >
-                    {t.type === "OUTBID" ? "Bid again →" : "View auction →"}
+                    {t.type === "OUTBID" ? "Bid again" : "View auction"} <Icon.Arrow className="h-3.5 w-3.5" />
                   </Link>
                 )}
               </div>
-              <button
-                onClick={() => dismissToast(t.toastId)}
-                className="text-slate-light hover:text-ink text-lg leading-none"
-                aria-label="Dismiss"
-              >
-                ×
+              <button onClick={() => dismissToast(t.toastId)} className="text-mute hover:text-ivory" aria-label="Dismiss">
+                <Icon.X className="h-4 w-4" />
               </button>
             </div>
+            {/* time-left bar */}
+            <span className={`absolute bottom-0 left-0 h-[2px] w-full origin-left ${s.dot}`} style={{ animation: "toast-timer 6s linear forwards" }} />
           </div>
         );
       })}
+      <style>{`@keyframes toast-timer { from { transform: scaleX(1) } to { transform: scaleX(0) } }`}</style>
     </div>
   );
 }
