@@ -82,3 +82,10 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_notifications_user_recent ON notifications (user_id, created_at DESC);
+
+-- Profile fields (see migrations/005)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS bio        TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS location   VARCHAR(120) NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS phone      VARCHAR(30) NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT NOT NULL DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
