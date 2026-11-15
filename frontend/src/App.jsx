@@ -1,6 +1,7 @@
 import { Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import { LiveProvider } from "./context/LiveContext";
+import { ThemeProvider } from "./context/ThemeContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import MainLayout from "./layouts/MainLayout";
 import Home from "./pages/Home";
@@ -11,46 +12,57 @@ import MyAuctions from "./pages/MyAuctions";
 import MyBids from "./pages/MyBids";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import Profile from "./pages/Profile";
 
 export default function App() {
   return (
-    <AuthProvider>
-      {/* LiveProvider: one SSE connection for live bids, closings and notifications */}
-      <LiveProvider>
-        <Routes>
-          <Route element={<MainLayout />}>
-            <Route path="/" element={<Home />} />
-            <Route path="/browse" element={<Browse />} />
-            <Route path="/auctions/:id" element={<AuctionDetails />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            <Route
-              path="/create"
-              element={
-                <ProtectedRoute>
-                  <CreateAuction />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/my-auctions"
-              element={
-                <ProtectedRoute>
-                  <MyAuctions />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/my-bids"
-              element={
-                <ProtectedRoute>
-                  <MyBids />
-                </ProtectedRoute>
-              }
-            />
-          </Route>
-        </Routes>
-      </LiveProvider>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        {/* LiveProvider: one SSE connection for live bids, closings and notifications */}
+        <LiveProvider>
+          <Routes>
+            <Route element={<MainLayout />}>
+              <Route path="/" element={<Home />} />
+              <Route path="/browse" element={<Browse />} />
+              <Route path="/auctions/:id" element={<AuctionDetails />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+              <Route
+                path="/create"
+                element={
+                  <ProtectedRoute>
+                    <CreateAuction />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/my-auctions"
+                element={
+                  <ProtectedRoute>
+                    <MyAuctions />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/profile"
+                element={
+                  <ProtectedRoute>
+                    <Profile />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/my-bids"
+                element={
+                  <ProtectedRoute>
+                    <MyBids />
+                  </ProtectedRoute>
+                }
+              />
+            </Route>
+          </Routes>
+        </LiveProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
