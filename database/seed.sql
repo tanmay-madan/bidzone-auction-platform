@@ -2,10 +2,10 @@
 -- All users share the password: password123
 
 INSERT INTO users (id, name, email, password_hash) VALUES
-  (1, 'Alice Seller', 'alice@bidzone.local', '$2b$10$wT1n0xK/nL3rYg1Q7yZkLe9eXz2mF1mU3lTq6Vp8G0yYyA1B2C3D4'),
-  (2, 'Bob Bidder', 'bob@bidzone.local', '$2b$10$wT1n0xK/nL3rYg1Q7yZkLe9eXz2mF1mU3lTq6Vp8G0yYyA1B2C3D4'),
-  (3, 'Charlie Bidder', 'charlie@bidzone.local', '$2b$10$wT1n0xK/nL3rYg1Q7yZkLe9eXz2mF1mU3lTq6Vp8G0yYyA1B2C3D4'),
-  (4, 'Diana Evaluator', 'demo@bidzone.local', '$2b$10$wT1n0xK/nL3rYg1Q7yZkLe9eXz2mF1mU3lTq6Vp8G0yYyA1B2C3D4')
+  (1, 'Alice Seller', 'alice@bidzone.local', '$2b$10$eKPCSrwQLLjHX848EWnwmuksOy19M3af9hnPvNeTYnvFxjlg2B6Vu'),
+  (2, 'Bob Bidder', 'bob@bidzone.local', '$2b$10$eKPCSrwQLLjHX848EWnwmuksOy19M3af9hnPvNeTYnvFxjlg2B6Vu'),
+  (3, 'Charlie Bidder', 'charlie@bidzone.local', '$2b$10$eKPCSrwQLLjHX848EWnwmuksOy19M3af9hnPvNeTYnvFxjlg2B6Vu'),
+  (4, 'Diana Evaluator', 'demo@bidzone.local', '$2b$10$eKPCSrwQLLjHX848EWnwmuksOy19M3af9hnPvNeTYnvFxjlg2B6Vu')
 ON CONFLICT (id) DO NOTHING;
 
 SELECT setval('users_id_seq', (SELECT MAX(id) FROM users));
