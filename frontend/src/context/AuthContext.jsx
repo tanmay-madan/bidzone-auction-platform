@@ -41,6 +41,16 @@ export function AuthProvider({ children }) {
     return res.data.user;
   }
 
+  // After a profile edit: refresh the user, and swap in the new token if
+  // the backend issued one (it does when the email changes).
+  function updateUser(nextUser, nextToken) {
+    if (nextToken) {
+      localStorage.setItem("bidzone_token", nextToken);
+      setToken(nextToken);
+    }
+    setUser((u) => ({ ...u, ...nextUser }));
+  }
+
   function logout() {
     localStorage.removeItem("bidzone_token");
     setToken(null);
@@ -49,7 +59,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, token, loading, register, login, logout, isAuthed: !!token }}
+      value={{ user, token, loading, register, login, logout, updateUser, isAuthed: !!token }}
     >
       {children}
     </AuthContext.Provider>

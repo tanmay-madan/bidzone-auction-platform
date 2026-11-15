@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import AuthShell from "../components/AuthShell";
+import { Alert } from "../components/ui";
 
 export default function Login() {
   const { login } = useAuth();
@@ -25,49 +27,31 @@ export default function Login() {
   }
 
   return (
-    <div className="mx-auto max-w-md px-6 py-20">
-      <h1 className="font-display text-3xl text-ink">Welcome back</h1>
-      <p className="mt-2 text-slate">Log in to bid and manage your auctions.</p>
-
-      <form onSubmit={handleSubmit} className="mt-8 space-y-4">
+    <AuthShell
+      eyebrow="Welcome back"
+      title="Log in"
+      subtitle="Pick up where you left off — your bids are waiting."
+      footer={
+        <>
+          New to BidZone?{" "}
+          <Link to="/register" className="font-medium text-gold hover:text-gold-light">Create an account</Link>
+        </>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm text-slate mb-1">Email</label>
-          <input
-            type="email"
-            required
-            value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
-            className="w-full rounded border border-border px-3 py-2 focus:border-navy outline-none"
-          />
+          <label className="label" htmlFor="email">Email</label>
+          <input id="email" type="email" required autoComplete="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="you@example.com" className="input" />
         </div>
         <div>
-          <label className="block text-sm text-slate mb-1">Password</label>
-          <input
-            type="password"
-            required
-            value={form.password}
-            onChange={(e) => setForm({ ...form, password: e.target.value })}
-            className="w-full rounded border border-border px-3 py-2 focus:border-navy outline-none"
-          />
+          <label className="label" htmlFor="password">Password</label>
+          <input id="password" type="password" required autoComplete="current-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="••••••••" className="input" />
         </div>
-
-        {error && <p className="text-sm text-[#B4463F]">{error}</p>}
-
-        <button
-          type="submit"
-          disabled={submitting}
-          className="w-full bg-navy text-paper rounded py-2.5 font-medium hover:bg-navy-light transition-colors disabled:opacity-60"
-        >
-          {submitting ? "Logging in..." : "Log In"}
+        {error && <Alert>{error}</Alert>}
+        <button type="submit" disabled={submitting} className="btn-gold w-full py-3">
+          {submitting ? "Logging in…" : "Log in"}
         </button>
       </form>
-
-      <p className="mt-6 text-sm text-slate">
-        No account?{" "}
-        <Link to="/register" className="text-navy hover:text-navy-light">
-          Register
-        </Link>
-      </p>
-    </div>
+    </AuthShell>
   );
 }
