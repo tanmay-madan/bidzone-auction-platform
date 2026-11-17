@@ -6,18 +6,22 @@ dotenv.config();
 const { Pool } = pg;
 
 // A single shared pool for the whole app. Every query and every
-// transaction (BEGIN / SELECT ... FOR UPDATE / COMMIT) in later
-// phases goes through this pool so connection handling stays in one
-// place.
-// Connection settings are exported so the live-events listener can open
-// its own dedicated (non-pooled) connection for LISTEN.
-export const dbConfig = {
-  host: process.env.DB_HOST || "localhost",
-  port: Number(process.env.DB_PORT) || 5432,
-  user: process.env.DB_USER || "postgres",
-  password: process.env.DB_PASSWORD || "postgres",
-  database: process.env.DB_NAME || "bidzone",
-};
+// transaction (BEGIN / SELECT ... FOR UPDATE / COMMIT) goes through
+// this pool so connection handling stays in one place.
+// Supports both individual environment variables (localhost) and
+// DATABASE_URL connection strings (Render / Neon / Supabase).
+export const dbConfig = process.env.DATABASE_URL
+  ? {
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false },
+    }
+  : {
+      host: process.env.DB_HOST || "localhost",
+      port: Number(process.env.DB_PORT) || 5432,
+      user: process.env.DB_USER || "postgres",
+      password: process.env.DB_PASSWORD || "postgres",
+      database: process.env.DB_NAME || "bidzone",
+    };
 
 const pool = new Pool({
   ...dbConfig,
