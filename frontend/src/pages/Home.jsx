@@ -28,7 +28,7 @@ const STEPS = [
     icon: Icon.Clock,
     code: "starts_at <= now() < ends_at",
     title: "Validate on the DB clock",
-    text: "Open/closed is decided by PostgreSQL's clock, never the browser's — and the minimum increment is checked against fresh state.",
+    text: "Open and closed are decided by PostgreSQL's clock, never the browser's, and the minimum increment is checked against fresh state.",
   },
   {
     icon: Icon.Db,
@@ -40,7 +40,7 @@ const STEPS = [
     icon: Icon.Bolt,
     code: "pg_notify → Server-Sent Events",
     title: "Broadcast on commit",
-    text: "Only committed bids are pushed live to every open browser — a rolled-back bid is never shown to anyone.",
+    text: "Only committed bids are pushed live to every open browser. A rolled-back bid is never shown to anyone.",
   },
 ];
 
@@ -87,19 +87,23 @@ function ActivityFeed() {
         </div>
       ) : (
         <ul className="divide-y divide-line-soft">
-          {activity.map((a) => (
+          {activity.slice(0, 6).map((a) => (
             <li key={a.key} className="animate-feed-in overflow-hidden">
               <Link to={`/auctions/${a.auction_id}`} className="flex items-center gap-3 px-5 py-3 transition hover:bg-ivory/[0.04]">
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gold/15 text-gold">
                   <Icon.Gavel className="h-4 w-4" />
                 </span>
                 <span className="min-w-0 flex-1 text-sm">
-                  <span className="font-medium text-ivory">{a.bidder_name}</span>
-                  <span className="text-mute"> bid on </span>
-                  <span className="truncate text-ivory">{a.title}</span>
+                  <span className="block truncate">
+                    <span className="font-medium text-ivory">{a.bidder_name}</span>
+                    <span className="text-mute"> bid on</span>
+                  </span>
+                  <span className="block truncate text-ivory/90" title={a.title}>
+                    {a.title}
+                  </span>
                   <span className="block text-xs text-mute-dark">{timeAgo(new Date(a.at).toISOString())}</span>
                 </span>
-                <span className="num text-sm font-semibold text-gold">{formatINR(a.amount)}</span>
+                <span className="num shrink-0 text-sm font-semibold text-gold">{formatINR(a.amount)}</span>
               </Link>
             </li>
           ))}
@@ -154,15 +158,17 @@ export default function Home() {
               <span className="text-gradient italic">Exactly once.</span>
             </h1>
             <p className="mt-6 max-w-lg text-lg leading-relaxed text-mute">
-              BidZone is a live auction house engineered for the moment ten people hit “Bid” in the same millisecond —
-              transactional, lock-protected, and streamed to every screen in real time.
+              BidZone is a live auction house built for the moment ten people hit “Bid” in the same millisecond.
+              Every bid is transactional, lock-protected and streamed to every screen in real time.
             </p>
 
-            <div className="mt-9 flex flex-wrap items-center gap-3">
-              <Link to="/browse" className="btn-gold px-6 py-3 text-[15px]">
-                Explore live auctions <Icon.Arrow className="h-4 w-4" />
+            <div className="mt-9 grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-center">
+              <Link to="/browse" className="btn-gold group px-4 py-3 text-[14px] sm:px-6 sm:text-[15px]">
+                <span className="sm:hidden">Explore auctions</span>
+                <span className="hidden sm:inline">Explore live auctions</span>
+                <Icon.Arrow className="h-4 w-4 transition-transform group-hover:translate-x-1" />
               </Link>
-              <Link to="/create" className="btn-ghost px-6 py-3 text-[15px]">
+              <Link to="/create" className="btn-ghost px-4 py-3 text-[14px] sm:px-6 sm:text-[15px]">
                 List an item
               </Link>
             </div>
@@ -171,11 +177,11 @@ export default function Home() {
               {[
                 ["Live lots", <AnimatedNumber key="a" value={auctions.length} />],
                 ["Bids placed", <AnimatedNumber key="b" value={totalBids} />],
-                ["Live value", <Money key="c" value={liveValue} />],
+                ["Live value", <Money key="c" compact value={liveValue} />],
               ].map(([k, v]) => (
                 <div key={k} className="px-4 py-4">
                   <dt className="eyebrow text-[10px]">{k}</dt>
-                  <dd className="num mt-1.5 truncate text-lg font-semibold text-ivory sm:text-xl">{loading ? "—" : v}</dd>
+                  <dd className="num mt-1.5 truncate text-lg font-semibold text-ivory sm:text-xl">{loading ? <span className="skeleton inline-block h-5 w-12 rounded" /> : v}</dd>
                 </div>
               ))}
             </dl>
@@ -191,7 +197,7 @@ export default function Home() {
                     <AuctionImage src={featured.image_url} title={featured.title} className="h-full w-full transition duration-700 group-hover:scale-105" />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent" />
                     <div className="absolute left-4 top-4 flex gap-2">
-                      <StatusBadge status="ACTIVE" />
+                      <StatusBadge overlay status="ACTIVE" />
                       <span className="chip-glass px-2.5 py-1 font-mono text-[10.5px] font-semibold uppercase tracking-[0.14em] text-gold-light">
                         Featured lot
                       </span>
@@ -300,7 +306,7 @@ export default function Home() {
                 Built for the <span className="text-gradient italic">same-millisecond</span> bid.
               </h2>
               <p className="mt-5 leading-relaxed text-mute">
-                Naive auction sites read the highest bid, compare, then write — and two bidders can both “win”. BidZone serialises
+                Naive auction sites read the highest bid, compare, then write, and two bidders can both “win”. BidZone serialises
                 bids per auction inside PostgreSQL, so the leaderboard and the bid history are always in agreement.
               </p>
               <div className="mt-8 rounded-lg border border-line bg-[#0B0D12]/90 p-4 font-mono text-[12.5px] leading-6 text-white/90">

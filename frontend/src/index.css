@@ -243,6 +243,27 @@
 @keyframes drift2 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-16vw, 18vh) scale(.9); } }
 @keyframes drift3 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-10vw, -14vh) scale(1.2); } }
 
+/* ============================== LOGO ============================== */
+/* Hovering the logo "raises the paddle", like a bidder going higher. */
+.logo-mark .logo-paddle {
+  transform-box: view-box;
+  transform-origin: 32px 58px;
+  transition: transform 0.45s cubic-bezier(.34, 1.56, .64, 1);
+}
+.logo-mark .logo-spark {
+  transition: opacity 0.3s ease, transform 0.45s ease;
+  transform-box: view-box;
+  transform-origin: 50px 12px;
+}
+.logo:hover .logo-paddle,
+a:focus-visible .logo-paddle {
+  transform: translateY(-3px) rotate(-8deg);
+}
+.logo:hover .logo-spark {
+  opacity: 1;
+  transform: scale(1.15);
+}
+
 /* ============================== CONFETTI ============================== */
 .confetti {
   position: fixed;

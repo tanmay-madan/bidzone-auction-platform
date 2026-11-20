@@ -30,7 +30,7 @@ export default function Login() {
     <AuthShell
       eyebrow="Welcome back"
       title="Log in"
-      subtitle="Pick up where you left off — your bids are waiting."
+      subtitle="Pick up where you left off. Your bids are waiting."
       footer={
         <>
           New to BidZone?{" "}

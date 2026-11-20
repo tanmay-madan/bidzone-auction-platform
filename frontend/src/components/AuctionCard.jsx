@@ -9,6 +9,9 @@ export default function AuctionCard({ auction, index = 0 }) {
   const ended = status === "CLOSED" || new Date(ends_at).getTime() <= now;
   const isUpcoming = !ended && status === "UPCOMING";
   const bids = Number(bid_count) || 0;
+  const msLeft = new Date(ends_at).getTime() - now;
+  const endingSoon = !ended && !isUpcoming && msLeft < 60 * 60 * 1000;
+  const popular = !ended && bids >= 3;
 
   return (
     <Link
@@ -21,8 +24,18 @@ export default function AuctionCard({ auction, index = 0 }) {
       <div className="relative aspect-[4/3] overflow-hidden rounded-t-xl">
         <AuctionImage src={image_url} title={title} className="h-full w-full transition-transform duration-700 group-hover:scale-[1.06]" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/15 to-transparent" />
-        <div className="absolute left-3 top-3">
-          <StatusBadge status={ended ? "CLOSED" : status} />
+        <div className="absolute left-3 top-3 flex flex-wrap gap-1.5">
+          <StatusBadge overlay status={ended ? "CLOSED" : status} />
+          {endingSoon && (
+            <span className="chip-glass inline-flex items-center gap-1 px-2.5 py-1 font-mono text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[#FFB4A8]">
+              <Icon.Clock className="h-3 w-3" /> Ending soon
+            </span>
+          )}
+          {popular && !endingSoon && (
+            <span className="chip-glass inline-flex items-center gap-1 px-2.5 py-1 font-mono text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[#F8CD78]">
+              <Icon.Flame className="h-3 w-3" /> Popular
+            </span>
+          )}
         </div>
         <div className="chip-glass absolute right-3 top-3 inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px]">
           <Icon.Gavel className="h-3.5 w-3.5 text-gold-light" />

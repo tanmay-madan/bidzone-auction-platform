@@ -190,7 +190,7 @@ export default function AuctionDetails() {
             <AuctionImage src={auction.image_url} title={auction.title} className="aspect-[4/3] w-full" />
             <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/50 to-transparent" />
             <div className="absolute left-4 top-4 flex gap-2">
-              <StatusBadge status={isClosed ? "CLOSED" : auction.status} />
+              <StatusBadge overlay status={isClosed ? "CLOSED" : auction.status} />
               <span className="chip-glass px-2.5 py-1 font-mono text-[10.5px] uppercase tracking-[0.14em]">
                 Lot #{String(auction.id).padStart(4, "0")}
               </span>
@@ -325,7 +325,7 @@ export default function AuctionDetails() {
                     </Link>
                   ) : isOwnAuction ? (
                     <div className="rounded-lg border border-line bg-night-800/40 px-4 py-3 text-sm text-mute">
-                      This is your listing — sellers can't bid on their own auctions.
+                      This is your listing. Sellers can't bid on their own auctions.
                     </div>
                   ) : (
                     <form onSubmit={handleBid} className="space-y-3">
@@ -421,7 +421,7 @@ function WinnerBanner({ auction, isWinning, isOwnAuction, winnerName, onCelebrat
     text = isOwnAuction ? "No one bid on this item. You can list it again anytime." : "This item did not sell.";
     tone = "from-mute/20";
   } else if (isWinning) {
-    title = "Congratulations — you won this auction!";
+    title = "Congratulations, you won this auction!";
     text = `Your winning bid was ${price}.`;
     tone = "from-win/25";
   } else if (isOwnAuction) {

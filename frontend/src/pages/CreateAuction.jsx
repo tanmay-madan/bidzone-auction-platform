@@ -74,7 +74,7 @@ export default function CreateAuction() {
     <div className="container-x py-12">
       <p className="eyebrow text-gold">New listing</p>
       <h1 className="mt-2 font-display text-6xl leading-none text-ivory">List an item</h1>
-      <p className="mt-3 max-w-lg text-mute">Set the rules once — BidZone enforces them on every single bid.</p>
+      <p className="mt-3 max-w-lg text-mute">Set the rules once. BidZone enforces them on every single bid.</p>
 
       <div className="mt-10 grid gap-10 lg:grid-cols-[1.3fr_1fr]">
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -85,7 +85,7 @@ export default function CreateAuction() {
             <Field label="Description">
               <textarea rows={4} value={form.description} onChange={(e) => update("description", e.target.value)} placeholder="Condition, provenance, what's in the box…" className="input resize-none" />
             </Field>
-            <Field label="Image URL" hint="Optional — a generated cover is used if left blank.">
+            <Field label="Image URL" hint="Optional. A cover is generated if you leave this blank.">
               <input value={form.image_url} onChange={(e) => update("image_url", e.target.value)} placeholder="https://…" className="input" />
             </Field>
           </Section>
@@ -135,7 +135,7 @@ export default function CreateAuction() {
               <AuctionImage key={form.image_url} src={form.image_url || null} title={form.title || "New Lot"} className="h-full w-full" />
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-transparent" />
               <div className="absolute left-3 top-3">
-                <StatusBadge status="UPCOMING" />
+                <StatusBadge overlay status="UPCOMING" />
               </div>
               <h3 className="absolute bottom-3 left-4 right-4 font-display text-3xl leading-none text-white">
                 {form.title || "Your item title"}
@@ -153,7 +153,7 @@ export default function CreateAuction() {
               <div className="col-span-2 flex items-center justify-between border-t border-line-soft pt-3 text-sm">
                 <span className="text-mute">Duration</span>
                 <span className="num text-ivory">
-                  {durationMs > 0 ? formatTimeRemaining(durationMs, 0) : "—"}
+                  {durationMs > 0 ? formatTimeRemaining(durationMs, 0) : "Not set"}
                 </span>
               </div>
               <div className="col-span-2 flex items-center justify-between text-sm">

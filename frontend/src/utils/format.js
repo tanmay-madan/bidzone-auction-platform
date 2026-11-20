@@ -9,6 +9,15 @@ export function formatINR(amount) {
 // Renders a countdown string purely for display. This value is never
 // used to decide whether bidding is allowed — the backend is
 // authoritative for that.
+// Short Indian-style amounts for tight spaces: ₹7.13 L, ₹1.2 Cr.
+export function formatINRCompact(amount) {
+  const n = Number(amount) || 0;
+  const short = (x) => Number(x.toFixed(2)).toString();
+  if (n >= 1e7) return `₹${short(n / 1e7)} Cr`;
+  if (n >= 1e5) return `₹${short(n / 1e5)} L`;
+  return formatINR(n);
+}
+
 export function formatTimeRemaining(endsAt, now = Date.now()) {
   const diffMs = new Date(endsAt).getTime() - now;
   if (diffMs <= 0) return "Ended";

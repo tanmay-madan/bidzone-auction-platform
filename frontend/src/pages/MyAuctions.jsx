@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../services/api";
-import { formatINR } from "../utils/format";
 import { AuctionImage, CountdownText, EmptyState, Icon, Money, StatusBadge } from "../components/ui";
 import { applyLiveEvent, useLiveEvents } from "../context/LiveContext";
 

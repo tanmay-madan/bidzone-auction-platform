@@ -23,6 +23,17 @@ export function AuthProvider({ children }) {
       .finally(() => setLoading(false));
   }, [token]);
 
+  // The API client fires this when the server rejects our token
+  // (expired or invalid), so the UI logs out instead of acting signed in.
+  useEffect(() => {
+    function onExpired() {
+      setToken(null);
+      setUser(null);
+    }
+    window.addEventListener("bidzone-auth-expired", onExpired);
+    return () => window.removeEventListener("bidzone-auth-expired", onExpired);
+  }, []);
+
   function persistAuth({ token: newToken, user: newUser }) {
     localStorage.setItem("bidzone_token", newToken);
     setToken(newToken);

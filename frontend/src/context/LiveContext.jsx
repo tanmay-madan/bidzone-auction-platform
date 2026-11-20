@@ -42,6 +42,20 @@ export function LiveProvider({ children }) {
     }
   }, [isAuthed]);
 
+  // Seed the activity feed with the latest bids so it is never empty on
+  // first load; live bids are then added on top as they arrive.
+  useEffect(() => {
+    api
+      .get("/activity")
+      .then((res) =>
+        setActivity((live) => {
+          const recent = res.data.activity.map((b) => ({ ...b, at: Date.parse(b.created_at), key: `h-${b.id}` }));
+          return [...live, ...recent].slice(0, 8);
+        })
+      )
+      .catch(() => {});
+  }, []);
+
   // Reset / load notifications whenever the logged-in user changes.
   useEffect(() => {
     if (!isAuthed) {

@@ -13,6 +13,7 @@ import MyBids from "./pages/MyBids";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Profile from "./pages/Profile";
+import NotFound from "./pages/NotFound";
 
 export default function App() {
   return (
@@ -59,6 +60,7 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
+              <Route path="*" element={<NotFound />} />
             </Route>
           </Routes>
         </LiveProvider>

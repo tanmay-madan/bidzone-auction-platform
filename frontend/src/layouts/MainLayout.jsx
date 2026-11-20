@@ -45,7 +45,7 @@ export default function MainLayout() {
             <div>
               <Logo size={24} />
               <p className="mt-4 max-w-sm text-sm leading-relaxed text-mute">
-                A real-time auction marketplace built on PostgreSQL transactions and row-level locking — so simultaneous bids
+                A real-time auction marketplace built on PostgreSQL transactions and row-level locking, so simultaneous bids
                 never corrupt the leaderboard.
               </p>
               <div className="mt-5">

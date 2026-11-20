@@ -1,25 +1,46 @@
 import { Link } from "react-router-dom";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import useNow from "../hooks/useNow";
-import { formatINR, formatTimeRemaining, hueFor, initials, timeParts } from "../utils/format";
+import { formatINR, formatINRCompact, formatTimeRemaining, hueFor, initials, timeParts } from "../utils/format";
 
 /* ---------------------------------- Logo ---------------------------------- */
-export function Logo({ size = 28 }) {
+// BidZone mark: an auction bidding paddle with a rising arrow, the
+// moment a bidder raises their paddle to go higher.
+export function LogoMark({ size = 28, className = "" }) {
+  const uid = useId().replace(/:/g, "");
   return (
-    <span className="inline-flex items-center gap-2.5">
-      <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden="true">
-        <defs>
-          <linearGradient id="lg-gold" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor="#F8CD78" />
-            <stop offset="1" stopColor="#E0A030" />
-          </linearGradient>
-        </defs>
-        <rect width="32" height="32" rx="9" fill="url(#lg-gold)" />
-        <path d="M10 22.5h9" stroke="#0A0C11" strokeWidth="2.4" strokeLinecap="round" />
-        <rect x="14.2" y="6.2" width="6" height="10.5" rx="1.6" transform="rotate(45 14.2 6.2)" fill="#0A0C11" />
-        <path d="M13.2 15.4l-3.6 3.6" stroke="#0A0C11" strokeWidth="2.4" strokeLinecap="round" />
-      </svg>
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" aria-hidden="true" className={`logo-mark ${className}`}>
+      <defs>
+        <linearGradient id={`bz-t-${uid}`} x1="8" y1="4" x2="56" y2="62" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#FBD88C" />
+          <stop offset="0.55" stopColor="#F2B544" />
+          <stop offset="1" stopColor="#D98A1E" />
+        </linearGradient>
+        <linearGradient id={`bz-g-${uid}`} x1="32" y1="0" x2="32" y2="30" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#fff" stopOpacity=".5" />
+          <stop offset="1" stopColor="#fff" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <rect width="64" height="64" rx="16" fill={`url(#bz-t-${uid})`} />
+      <rect x="1" y="1" width="62" height="31" rx="15" fill={`url(#bz-g-${uid})`} opacity=".5" />
+      <g className="logo-paddle">
+        <g transform="rotate(-12 32 34)">
+          <rect x="28" y="33" width="8" height="23" rx="4" fill="#12141B" />
+          <rect x="15" y="9" width="34" height="30" rx="15" fill="#12141B" />
+          <rect x="18.5" y="12.5" width="27" height="23" rx="11.5" stroke="#F2B544" strokeOpacity=".28" strokeWidth="1.2" />
+          <path d="M32 31V17M25.5 23.5L32 17L38.5 23.5" stroke="#F2B544" strokeWidth="3.8" strokeLinecap="round" strokeLinejoin="round" />
+        </g>
+      </g>
+      <path className="logo-spark" d="M53 9.5l-2.6 2.6M56 16h-3.6M47 5.5v3.6" stroke="#12141B" strokeWidth="2.4" strokeLinecap="round" opacity=".7" />
+    </svg>
+  );
+}
+
+export function Logo({ size = 30 }) {
+  return (
+    <span className="logo inline-flex items-center gap-2.5">
+      <LogoMark size={size} />
       <span className="font-display text-[26px] leading-none tracking-tight text-ivory">
         Bid<span className="italic text-gold">Zone</span>
       </span>
@@ -28,12 +49,20 @@ export function Logo({ size = 28 }) {
 }
 
 /* ------------------------------ Status badge ------------------------------ */
-export function StatusBadge({ status, className = "" }) {
-  const map = {
-    ACTIVE: { text: "Live", cls: "bg-live/15 text-live border-live/35", dot: "bg-live", pulse: true },
-    UPCOMING: { text: "Upcoming", cls: "bg-info/15 text-info border-info/35", dot: "bg-info" },
-    CLOSED: { text: "Ended", cls: "bg-black/30 text-white/80 border-white/15", dot: "bg-white/60" },
-  };
+export function StatusBadge({ status, overlay = false, className = "" }) {
+  // `overlay` = sitting on a photo: dark frosted chip with white text, so it
+  // stays readable on any image in both light and dark themes.
+  const map = overlay
+    ? {
+        ACTIVE: { text: "Live", cls: "border-white/15 bg-black/45 text-white", dot: "bg-[#FF5C50]", pulse: true },
+        UPCOMING: { text: "Upcoming", cls: "border-white/15 bg-black/45 text-white", dot: "bg-[#6EA8FE]" },
+        CLOSED: { text: "Ended", cls: "border-white/15 bg-black/45 text-white/85", dot: "bg-white/60" },
+      }
+    : {
+        ACTIVE: { text: "Live", cls: "bg-live/10 text-live border-live/30", dot: "bg-live", pulse: true },
+        UPCOMING: { text: "Upcoming", cls: "bg-info/10 text-info border-info/30", dot: "bg-info" },
+        CLOSED: { text: "Ended", cls: "bg-mute/10 text-mute border-line-strong", dot: "bg-mute" },
+      };
   const s = map[status] || map.ACTIVE;
   return (
     <span
@@ -118,8 +147,8 @@ export function AnimatedNumber({ value, format = (n) => Math.round(n).toLocaleSt
   return <span className={className}>{format(display)}</span>;
 }
 
-export function Money({ value, className = "" }) {
-  return <AnimatedNumber value={value} format={formatINR} className={className} />;
+export function Money({ value, compact = false, className = "" }) {
+  return <AnimatedNumber value={value} format={compact ? formatINRCompact : formatINR} className={className} />;
 }
 
 /* --------------------------------- Reveal --------------------------------- */
@@ -193,26 +222,42 @@ export function Confetti({ count = 90 }) {
 }
 
 /* -------------------------- Image with fallback art ----------------------- */
+// Curated, low-saturation cover palettes for items without a photo.
+const COVERS = [
+  ["#4A3517", "#140F08", "#F2B544"],
+  ["#232A4D", "#0B0D18", "#8FA8FF"],
+  ["#43202F", "#120A0E", "#F28AA8"],
+  ["#173B37", "#081211", "#6FD6C3"],
+  ["#2E3240", "#0C0D12", "#C9CEDC"],
+  ["#3D2A1E", "#100B08", "#E8A776"],
+];
+
 export function AuctionImage({ src, title = "", className = "" }) {
   const [failed, setFailed] = useState(!src);
-  const hue = hueFor(title);
+  useEffect(() => setFailed(!src), [src]);
   if (failed) {
+    const [from, to, accent] = COVERS[hueFor(title) % COVERS.length];
     return (
       <div
         className={`relative flex items-center justify-center overflow-hidden ${className}`}
-        style={{
-          background: `radial-gradient(120% 90% at 20% 10%, hsl(${hue} 70% 34%) 0%, hsl(${(hue + 40) % 360} 55% 16%) 55%, #0A0C11 100%)`,
-        }}
+        style={{ background: `radial-gradient(130% 100% at 15% 0%, ${from} 0%, ${to} 70%)` }}
       >
         <div
-          className="absolute inset-0 opacity-60"
+          className="absolute inset-0 opacity-50"
           style={{
             backgroundImage:
-              "linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px)",
-            backgroundSize: "44px 44px",
+              "linear-gradient(rgba(255,255,255,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.045) 1px, transparent 1px)",
+            backgroundSize: "40px 40px",
+            maskImage: "radial-gradient(ellipse at center, black 20%, transparent 75%)",
           }}
         />
-        <span className="relative font-display text-6xl italic text-white/85 drop-shadow">{initials(title)}</span>
+        <div className="absolute -right-16 -top-16 h-56 w-56 rounded-full blur-3xl" style={{ background: accent, opacity: 0.12 }} />
+        <div className="relative flex flex-col items-center gap-2">
+          <span className="font-display text-5xl italic" style={{ color: accent, opacity: 0.9 }}>
+            {initials(title)}
+          </span>
+          <span className="h-px w-10" style={{ background: accent, opacity: 0.4 }} />
+        </div>
       </div>
     );
   }
@@ -328,5 +373,6 @@ export const Icon = {
   Eye: (p) => (<svg {...base} {...p}><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg>),
   EyeOff: (p) => (<svg {...base} {...p}><path d="M3 3l18 18M10.6 5.1A10.6 10.6 0 0112 5c6.4 0 10 7 10 7a17.5 17.5 0 01-3.2 4.2M6.6 6.6C3.9 8.4 2 12 2 12s3.6 7 10 7a10 10 0 005.4-1.6M9.9 9.9a3 3 0 004.2 4.2" /></svg>),
   Calendar: (p) => (<svg {...base} {...p}><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 11h18" /></svg>),
+  Flame: (p) => (<svg {...base} {...p}><path d="M12 22c4 0 7-2.8 7-6.8 0-3.4-2.2-5.6-3.6-7.2-.4 1.8-1.4 3-2.6 3.6.2-3.2-1.2-6.4-4.3-8.6.3 3.5-1.7 5.6-3 7.3C4.3 12 4 13.4 4 15.2 4 19.2 7.6 22 12 22z" /></svg>),
   Activity: (p) => (<svg {...base} {...p}><path d="M22 12h-4l-3 8L9 4l-3 8H2" /></svg>),
 };
