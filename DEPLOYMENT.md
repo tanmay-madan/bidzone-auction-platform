@@ -129,7 +129,8 @@ With `NODE_ENV=production` the API:
 
 ## 7. Notes and Limitations
 
-* **Free-tier sleep:** Render's free web services sleep after 15 minutes without traffic. The first request afterwards can take 30–60 seconds, and live connections reconnect automatically once the service is awake. Open the site a minute before a demo.
+* **Free-tier sleep:** Render's free web services sleep after 15 minutes without traffic. The first request afterwards can take 30 to 60 seconds, and live connections reconnect automatically once the service is awake. Open the site a minute before a demo.
 * **Demo data ages:** Seed auctions are created relative to the time `npm run seed` runs, so they end after a few days. Before a demo, create fresh auctions from the UI.
+* **Photo storage:** Uploaded photos are stored in PostgreSQL, so they survive redeploys (Render's free web services have no permanent disk). Photos are compressed to roughly 100 to 300 KB in the browser, so the 1 GB free database holds thousands of listings. If photo links ever show the wrong address, set `PUBLIC_API_URL` to `https://<your-api>.onrender.com/api`.
 * **Single API instance:** Rate-limit counters are kept in memory. Settlement and live events already work across several instances (advisory locks and `LISTEN/NOTIFY`), but rate limiting would need a shared store such as Redis.
 * **Benchmarks and evidence scripts** are meant for local or CI runs, not against the production deployment.

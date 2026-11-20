@@ -4,6 +4,7 @@ import api from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { Alert, AuctionImage, Icon, StatusBadge } from "../components/ui";
 import { formatINR, formatTimeRemaining } from "../utils/format";
+import PhotoUpload from "../components/PhotoUpload";
 
 function toDatetimeLocal(date) {
   const pad = (n) => String(n).padStart(2, "0");
@@ -33,6 +34,7 @@ export default function CreateAuction() {
   }));
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
 
   function update(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -85,8 +87,8 @@ export default function CreateAuction() {
             <Field label="Description">
               <textarea rows={4} value={form.description} onChange={(e) => update("description", e.target.value)} placeholder="Condition, provenance, what's in the box…" className="input resize-none" />
             </Field>
-            <Field label="Image URL" hint="Optional. A cover is generated if you leave this blank.">
-              <input value={form.image_url} onChange={(e) => update("image_url", e.target.value)} placeholder="https://…" className="input" />
+            <Field label="Photo" hint="Optional. A cover is generated if you skip this.">
+              <PhotoUpload value={form.image_url} onChange={(url) => update("image_url", url)} onBusyChange={setPhotoBusy} />
             </Field>
           </Section>
 
@@ -122,8 +124,8 @@ export default function CreateAuction() {
 
           {error && <Alert>{error}</Alert>}
 
-          <button type="submit" disabled={submitting} className="btn-gold w-full py-3.5 text-[15px]">
-            {submitting ? "Publishing…" : (<><Icon.Gavel className="h-4 w-4" /> Publish auction</>)}
+          <button type="submit" disabled={submitting || photoBusy} className="btn-gold w-full py-3.5 text-[15px]">
+            {photoBusy ? "Waiting for photo upload…" : submitting ? "Publishing…" : (<><Icon.Gavel className="h-4 w-4" /> Publish auction</>)}
           </button>
         </form>
 

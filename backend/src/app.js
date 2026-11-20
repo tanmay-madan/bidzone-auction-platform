@@ -5,6 +5,7 @@ import healthRoutes from "./routes/health.routes.js";
 import authRoutes from "./routes/auth.routes.js";
 import auctionsRoutes from "./routes/auctions.routes.js";
 import liveRoutes from "./routes/live.routes.js";
+import imagesRoutes from "./routes/images.routes.js";
 import { jsonErrorHandler, securityHeaders } from "./middleware/security.js";
 
 const app = express();
@@ -32,6 +33,7 @@ app.use("/api", healthRoutes);
 app.use("/api", authRoutes);
 app.use("/api", auctionsRoutes);
 app.use("/api", liveRoutes); // SSE stream + notifications
+app.use("/api", imagesRoutes); // listing photo uploads
 
 app.get("/", (req, res) => {
   res.json({ message: "BidZone API is running" });

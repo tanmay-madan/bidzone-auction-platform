@@ -89,3 +89,14 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS location   VARCHAR(120) NOT NULL DEFA
 ALTER TABLE users ADD COLUMN IF NOT EXISTS phone      VARCHAR(30) NOT NULL DEFAULT '';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT NOT NULL DEFAULT '';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+
+-- Uploaded listing photos (see migrations/006)
+CREATE TABLE IF NOT EXISTS images (
+  id          SERIAL PRIMARY KEY,
+  uploader_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  mime_type   VARCHAR(20) NOT NULL CHECK (mime_type IN ('image/jpeg', 'image/png', 'image/webp')),
+  size_bytes  INTEGER NOT NULL CHECK (size_bytes > 0),
+  data        BYTEA NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_images_uploader ON images (uploader_id);

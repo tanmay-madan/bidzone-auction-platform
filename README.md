@@ -86,7 +86,8 @@ BidZone solves this at the database layer:
 ### Marketplace & Accounts
 | Feature | Description |
 | :--- | :--- |
-| Auction management | Create auctions with live preview; edit or delete before the first bid |
+| Auction management | Create auctions with a live preview; edit or delete before the first bid |
+| Photo uploads | Drag and drop, browse or take a photo on mobile; images are resized and compressed in the browser, then stored in PostgreSQL |
 | Discovery | Search, status filters (Live / Upcoming / Ended), sorting and `Ctrl / ⌘ + K` quick search |
 | Dashboards | *My Bids* (Winning / Outbid / Won / Lost) and *My Auctions* (seller statistics) |
 | Authentication | bcrypt password hashing and JWT-based sessions |
@@ -191,6 +192,7 @@ erDiagram
     AUCTIONS ||--o{ NOTIFICATIONS : "references"
     USERS ||--o{ IDEMPOTENCY_KEYS : "holds"
     AUCTIONS ||--o{ IDEMPOTENCY_KEYS : "targets"
+    USERS ||--o{ IMAGES : "uploads"
 
     USERS {
         int id PK
@@ -252,6 +254,15 @@ erDiagram
         jsonb response
         timestamptz created_at
     }
+
+    IMAGES {
+        int id PK
+        int uploader_id FK
+        string mime_type "image/jpeg | image/png | image/webp"
+        int size_bytes
+        bytea data
+        timestamptz created_at
+    }
 ```
 
 ### Database Migrations
@@ -262,6 +273,7 @@ erDiagram
 | `003_add_active_auctions_index.sql` | Partial index for active auctions ordered by end time |
 | `004_add_notifications_and_settlement.sql` | `notifications` table and `settled_at` settlement marker |
 | `005_add_user_profile_fields.sql` | User profile fields (bio, location, phone, avatar) |
+| `006_add_images.sql` | `images` table for uploaded listing photos |
 
 All migrations are additive and idempotent (`IF NOT EXISTS`). `database/schema.sql` already includes every migration for fresh installations.
 
@@ -358,6 +370,7 @@ npm run dev
 | `ALLOW_TEST_MODES` | Backend | on in dev, off in prod | Enables `?strategy=naive\|optimistic` and `?anti_sniping=` for benchmarks |
 | `SETTLEMENT_SCHEDULER` | Backend | `on` | Set to `off` to disable automatic settlement |
 | `SETTLEMENT_INTERVAL_MS` | Backend | `15000` | Settlement sweep interval |
+| `PUBLIC_API_URL` | Backend | Detected | Public API address used in photo links, only needed if a proxy reports the wrong host |
 | `VITE_API_URL` | Frontend | `http://localhost:5000/api` | Backend base URL |
 
 For production hosting (Render, Neon, Vercel), see [`DEPLOYMENT.md`](DEPLOYMENT.md).
@@ -469,6 +482,12 @@ Base URL: `http://localhost:5000/api`. Endpoints marked *Authenticated* require 
 | `POST` | `/api/notifications/read-all` | Mark all notifications as read (Authenticated) | `200`, `401` |
 | `GET` | `/api/health` | API and database health check | `200` |
 
+### Photos
+| Method | Endpoint | Description | Status Codes |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/images` | Upload a listing photo as raw JPEG, PNG or WebP bytes, up to 3 MB (Authenticated) | `201`, `400`, `401`, `413`, `429` |
+| `GET` | `/api/images/:id` | Serve a photo with long-term caching | `200`, `404` |
+
 ### Error Contract
 Bidding endpoints return a consistent, machine-readable JSON error format:
 ```json
@@ -512,7 +531,7 @@ bidzone-auction-platform/
 ├── database/
 │   ├── schema.sql          # Complete schema (includes all migrations)
 │   ├── seed.sql            # Demo users and auctions
-│   └── migrations/         # 001 to 005
+│   └── migrations/         # 001 to 006
 ├── frontend/
 │   ├── public/             # Logo, favicon, app icons, web manifest
 │   └── src/
@@ -539,6 +558,7 @@ bidzone-auction-platform/
 * **Password storage:** Passwords are hashed with bcrypt and never returned by the API.
 * **SQL injection:** All queries use parameterized statements.
 * **Authorization:** Auction edits and deletions are restricted to the owner, sellers cannot bid on their own auctions, and manual settlement is restricted to the seller. Notification queries are always scoped to the authenticated user.
+* **Photo uploads:** The file type is identified from the file's own bytes, not the name or header; only JPEG, PNG and WebP are accepted (SVG is rejected because it can carry scripts). Uploads require login, are limited to 3 MB and 30 per hour, and are re-encoded in the browser, which also strips location metadata.
 * **Profile updates:** Only whitelisted fields are writable; email uniqueness is enforced; avatar URLs must use `http` or `https`; password changes require the current password.
 * **Input validation:** Request bodies and route parameters are validated against the database limits, so malformed input returns `400`/`404` instead of a server error. Auction edits and deletions lock the auction row, so they cannot overwrite a concurrent bid.
 * **Rate limiting:** Login attempts are limited to 10 per email per IP every 15 minutes, bid attempts to 120 per user per minute, and in production sign-ups to 20 per IP per hour.
