@@ -1,6 +1,8 @@
 import jwt from "jsonwebtoken";
+import config from "../config.js";
 
-const SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
+// Validated in config.js — production refuses to start without a strong secret.
+const SECRET = config.jwtSecret;
 const EXPIRES_IN = "7d";
 
 export function signToken(user) {

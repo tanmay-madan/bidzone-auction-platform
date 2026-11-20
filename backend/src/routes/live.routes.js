@@ -1,10 +1,12 @@
 import { Router } from "express";
 import { requireAuth } from "../middleware/auth.middleware.js";
+import { validateIdParam } from "../middleware/security.js";
 import { verifyToken } from "../utils/jwt.js";
 import { addClient } from "../services/events.js";
 import { listNotifications, markRead, markAllRead } from "../controllers/notifications.controller.js";
 
 const router = Router();
+router.param("id", validateIdParam);
 
 // GET /api/stream — Server-Sent Events.
 // Browsers' EventSource can't set an Authorization header, so the JWT is

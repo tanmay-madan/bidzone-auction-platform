@@ -8,13 +8,27 @@ import {
   updateAuction,
   deleteAuction,
 } from "../controllers/auctions.controller.js";
-import { placeBid, bidHistory, myBids } from "../controllers/bids.controller.js";
+import { placeBid, bidHistory, myBids, recentActivity } from "../controllers/bids.controller.js";
 import { requireAuth } from "../middleware/auth.middleware.js";
+import { rateLimit, validateIdParam } from "../middleware/security.js";
 import { settleAuction, settleAllExpiredAuctions } from "../workers/settlement.worker.js";
 
 const router = Router();
 
+// Every :id must be a positive integer (bad ids → 404, not a 500).
+router.param("id", validateIdParam);
+
+// Generous per-user cap on bid attempts; real bidding never comes close,
+// but it stops one client hammering the row lock.
+const bidLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  keyFn: (req) => `bid:${req.user?.id ?? req.ip}`,
+  message: "You're bidding too fast. Please wait a moment.",
+});
+
 router.get("/auctions", listAuctions);
+router.get("/activity", recentActivity);
 router.get("/my-auctions", requireAuth, myAuctions);
 router.get("/auctions/mine", requireAuth, myAuctions); // alias per spec
 router.get("/my-bids", requireAuth, myBids);
@@ -24,7 +38,7 @@ router.post("/auctions", requireAuth, createAuction);
 router.put("/auctions/:id", requireAuth, updateAuction);
 router.delete("/auctions/:id", requireAuth, deleteAuction);
 
-router.post("/auctions/:id/bids", requireAuth, placeBid);
+router.post("/auctions/:id/bids", requireAuth, bidLimiter, placeBid);
 router.get("/auctions/:id/bids", bidHistory);
 
 // Settlement routes with advisory locking protection.

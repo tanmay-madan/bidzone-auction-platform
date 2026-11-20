@@ -1,15 +1,14 @@
-import dotenv from "dotenv";
+// config.js loads .env and validates required settings — keep it first.
+import config from "./config.js";
 import app from "./app.js";
 import pool from "./db/pool.js";
 import { startEventListener, stopEventListener } from "./services/events.js";
 import { startSettlementScheduler } from "./workers/settlement.worker.js";
 
-dotenv.config();
-
-const PORT = process.env.PORT || 5000;
+const PORT = config.port;
 
 const server = app.listen(PORT, () => {
-  console.log(`BidZone API listening on http://localhost:${PORT}`);
+  console.log(`BidZone API listening on http://localhost:${PORT} (${config.isProd ? "production" : "development"})`);
 });
 
 // Phase 1: live events (LISTEN/NOTIFY -> SSE) and automatic settlement.
