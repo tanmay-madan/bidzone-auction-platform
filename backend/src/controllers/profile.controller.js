@@ -54,7 +54,7 @@ export async function updateProfile(req, res) {
 
   if (body.name !== undefined) {
     const name = String(body.name).trim();
-    if (name.length < 2 || name.length > 120) return bad(res, "Name must be 2–120 characters.", "name");
+    if (name.length < 2 || name.length > 120) return bad(res, "Name must be between 2 and 120 characters.", "name");
     updates.name = name;
   }
   if (body.email !== undefined) {
@@ -120,8 +120,8 @@ export async function changePassword(req, res) {
   if (!current_password || !new_password) {
     return bad(res, "Current and new password are both required.");
   }
-  if (String(new_password).length < 6) {
-    return bad(res, "New password must be at least 6 characters.", "new_password");
+  if (String(new_password).length < 6 || Buffer.byteLength(String(new_password)) > 72) {
+    return bad(res, "New password must be between 6 and 72 characters.", "new_password");
   }
   if (current_password === new_password) {
     return bad(res, "New password must be different from the current one.", "new_password");
@@ -133,7 +133,9 @@ export async function changePassword(req, res) {
 
     const ok = await bcrypt.compare(String(current_password), result.rows[0].password_hash);
     if (!ok) {
-      return res.status(401).json({ error: "WRONG_PASSWORD", message: "Current password is incorrect.", field: "current_password" });
+      // 400, not 401: the session is valid, only the typed password is wrong.
+      // (A 401 would make the frontend treat it as an expired login.)
+      return res.status(400).json({ error: "WRONG_PASSWORD", message: "Current password is incorrect.", field: "current_password" });
     }
 
     const hash = await bcrypt.hash(String(new_password), SALT_ROUNDS);

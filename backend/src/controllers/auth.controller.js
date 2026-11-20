@@ -11,22 +11,30 @@ function publicUser(row) {
 export async function register(req, res) {
   const { name, email, password } = req.body || {};
 
-  if (!name || !email || !password) {
+  if (typeof name !== "string" || typeof email !== "string" || typeof password !== "string" || !name.trim() || !email.trim() || !password) {
     return res.status(400).json({
       error: "VALIDATION_ERROR",
       message: "name, email and password are all required.",
     });
   }
-  if (password.length < 6) {
+  if (name.trim().length < 2 || name.trim().length > 120) {
+    return res.status(400).json({ error: "VALIDATION_ERROR", message: "Name must be between 2 and 120 characters.", field: "name" });
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim()) || email.length > 255) {
+    return res.status(400).json({ error: "VALIDATION_ERROR", message: "Enter a valid email address.", field: "email" });
+  }
+  // bcrypt only uses the first 72 bytes of a password.
+  if (password.length < 6 || Buffer.byteLength(password) > 72) {
     return res.status(400).json({
       error: "VALIDATION_ERROR",
-      message: "Password must be at least 6 characters.",
+      message: "Password must be between 6 and 72 characters.",
+      field: "password",
     });
   }
 
   try {
     const existing = await pool.query("SELECT id FROM users WHERE email = $1", [
-      email.toLowerCase(),
+      email.trim().toLowerCase(),
     ]);
     if (existing.rows.length > 0) {
       return res.status(409).json({
@@ -40,7 +48,7 @@ export async function register(req, res) {
       `INSERT INTO users (name, email, password_hash)
        VALUES ($1, $2, $3)
        RETURNING id, name, email`,
-      [name, email.toLowerCase(), passwordHash]
+      [name.trim(), email.trim().toLowerCase(), passwordHash]
     );
 
     const user = result.rows[0];
@@ -55,7 +63,7 @@ export async function register(req, res) {
 export async function login(req, res) {
   const { email, password } = req.body || {};
 
-  if (!email || !password) {
+  if (typeof email !== "string" || typeof password !== "string" || !email || !password) {
     return res.status(400).json({
       error: "VALIDATION_ERROR",
       message: "email and password are required.",
@@ -64,7 +72,7 @@ export async function login(req, res) {
 
   try {
     const result = await pool.query("SELECT * FROM users WHERE email = $1", [
-      email.toLowerCase(),
+      email.trim().toLowerCase(),
     ]);
     const user = result.rows[0];
 
