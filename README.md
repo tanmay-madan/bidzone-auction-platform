@@ -1,10 +1,22 @@
-# BidZone: High-Concurrency Real-Time Auction Platform
+<p align="center">
+  <img src="frontend/public/favicon.svg" alt="BidZone logo" width="96" />
+</p>
+
+<h1 align="center">BidZone</h1>
+
+<p align="center"><b>High-Concurrency Real-Time Auction Platform</b><br/>Every bid lands. Exactly once.</p>
+
+<p align="center">
 
 [![BidZone Automated CI](https://github.com/tanmay-madan/bidzone-auction-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/tanmay-madan/bidzone-auction-platform/actions/workflows/ci.yml)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%2B-blue.svg)
 ![Node.js](https://img.shields.io/badge/Node.js-20%2B-green.svg)
 ![React](https://img.shields.io/badge/React-19-61dafb.svg)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ed.svg)
+![Render](https://img.shields.io/badge/API-Render-46e3b7.svg)
+![Vercel](https://img.shields.io/badge/Frontend-Vercel-000000.svg)
+
+</p>
 
 > A full-stack, real-time auction platform engineered to guarantee state consistency under high-frequency concurrent bidding, using database-level concurrency control, transaction-scoped event delivery, advisory-lock settlement and empirical performance benchmarking.
 
@@ -27,6 +39,7 @@
 11. [API Specification & Error Contract](#11-api-specification--error-contract)
 12. [Project Structure](#12-project-structure)
 13. [Security Considerations](#13-security-considerations)
+14. [Deployment](#14-deployment)
 
 ---
 
@@ -43,6 +56,8 @@ BidZone solves this at the database layer:
 * **Exactly-Once Settlement:** A scheduled settlement worker guarded by **PostgreSQL transaction-level advisory locks** (`pg_try_advisory_xact_lock`) and a `settled_at` marker, preventing duplicate winner processing across multi-replica deployments.
 * **Idempotency Protection:** Client-generated `Idempotency-Key` headers cache and replay the original response on network retries.
 * **Commit-Safe Real-Time Delivery:** Bid and settlement events are emitted with `pg_notify` inside the transaction and delivered to browsers over **Server-Sent Events** only after `COMMIT`, so rolled-back bids are never broadcast.
+* **Race-Free Seller Actions:** Editing or deleting an auction locks the same row as bidding, so a seller's change can never overwrite or erase a bid that lands at the same moment.
+* **Production Hardening:** Strict configuration checks, CORS allow-listing, rate limiting, input validation against database limits and benchmark-only modes that are disabled in production, so the row lock can never be bypassed.
 
 ---
 
@@ -56,13 +71,16 @@ BidZone solves this at the database layer:
 | Anti-sniping | Automatic 2-minute extension for late bids |
 | Automatic settlement | Expired auctions are closed every 15 seconds (configurable) |
 | Winner determination | Highest accepted bid wins; winner, seller and other bidders are notified |
+| Safe seller edits | Edits and deletions are allowed only before the first bid, checked under a row lock |
 
 ### Real-Time Experience
 | Feature | Description |
 | :--- | :--- |
 | Live price updates | Prices, bid history and countdowns update without a page refresh |
 | Notifications | In-app notification centre with unread count for *outbid*, *new bid*, *won*, *sold* and *ended* events |
-| Live activity feed | Site-wide stream of the most recent accepted bids |
+| Live activity feed | Site-wide stream of the latest accepted bids, filled on page load and updated live |
+| Urgency signals | *Ending soon* badge in the final hour and *Popular* badge for auctions with three or more bids |
+| Live countdowns | Second-by-second timers that turn red in the final two minutes |
 | Winner screen | Winner banner and celebration on auction close |
 
 ### Marketplace & Accounts
@@ -77,10 +95,13 @@ BidZone solves this at the database layer:
 ### Interface
 | Feature | Description |
 | :--- | :--- |
+| Brand identity | Original bidding-paddle logo with a hover animation, favicon, app icons and an installable web manifest |
 | Design system | Glassmorphism UI built on Tailwind CSS and CSS variables |
+| Motion | Animated background, price count-ups, card spotlight and tilt, scroll reveals and an animated bidding example on sign-in |
 | Theming | Light and dark modes, following the system preference by default |
 | Responsive layout | Desktop layout and a mobile layout with bottom tab navigation |
 | Accessibility | Animations are disabled when the operating system requests reduced motion |
+| Error states | Friendly 404 page, inline form validation and automatic sign-out when a session expires |
 
 ---
 
@@ -111,6 +132,7 @@ BidZone solves this at the database layer:
 | Real-Time | Server-Sent Events, `pg_notify` | Live bids, settlements and notifications |
 | Security | bcrypt, JSON Web Tokens | Password hashing and session tokens |
 | Infrastructure | Docker Compose, Nginx, GitHub Actions | Containerised setup, static serving, CI |
+| Hosting | Render (API + PostgreSQL), Vercel (frontend) | Production deployment |
 
 ---
 
@@ -256,6 +278,8 @@ All migrations are additive and idempotent (`IF NOT EXISTS`). `database/schema.s
 | Anti-sniping | `ends_at` extended within the locked transaction | Late bids cannot double-extend an auction |
 | Settlement | `pg_try_advisory_xact_lock` + `settled_at` | Each auction is settled and announced exactly once |
 | Event delivery | `pg_notify` inside the transaction | Only committed state is broadcast to clients |
+| Seller edits | `SELECT ... FOR UPDATE` before the "no bids yet" check | An edit or deletion can never race a bid |
+| Production safety | Benchmark modes (`?strategy=`, `?anti_sniping=`) disabled when `NODE_ENV=production` | Clients cannot bypass the row lock |
 
 ---
 
@@ -271,10 +295,7 @@ docker compose up --build
 * **Backend API:** `http://localhost:5000/api`
 * **Health Check:** `http://localhost:5000/api/health`
 
-> **Note:** PostgreSQL initialization scripts run only when the Docker volume is first created. To upgrade an existing volume, apply new migrations manually:
-> ```bash
-> docker exec -i bidzone-db psql -U postgres -d bidzone < database/migrations/005_add_user_profile_fields.sql
-> ```
+The backend container applies the schema automatically on every start (`npm run migrate` is idempotent), so existing Docker volumes are upgraded without manual steps. The Docker stack runs the API with `NODE_ENV=production`; set `ALLOW_TEST_MODES=true` to run the benchmark and evidence scripts against it.
 
 ### Demo Credentials (Pre-seeded)
 | Role | Email | Password |
@@ -295,15 +316,15 @@ To observe real-time behaviour, sign in as two different bidders in separate bro
 ### 1. Database
 ```bash
 createdb bidzone
-psql -d bidzone -f database/schema.sql
-psql -d bidzone -f database/seed.sql
 ```
 
 ### 2. Backend
 ```bash
 cd backend
-cp .env.example .env
+cp .env.example .env      # set DB_PASSWORD and JWT_SECRET
 npm install
+npm run migrate           # apply schema (safe to re-run)
+npm run seed              # demo users and auctions (safe to re-run)
 npm run dev
 ```
 
@@ -326,13 +347,20 @@ npm run dev
 | Variable | Scope | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `PORT` | Backend | `5000` | API port |
+| `NODE_ENV` | Backend | `development` | `production` enables strict checks (see Section 13) |
+| `DATABASE_URL` | Backend | Not set | Full connection string (hosted databases); overrides `DB_*` |
 | `DB_HOST`, `DB_PORT` | Backend | `localhost`, `5432` | PostgreSQL host and port |
-| `DB_USER`, `DB_PASSWORD` | Backend | `postgres`, — | PostgreSQL credentials |
+| `DB_USER`, `DB_PASSWORD` | Backend | `postgres`, not set | PostgreSQL credentials |
 | `DB_NAME` | Backend | `bidzone` | Database name |
-| `JWT_SECRET` | Backend | — | Secret used to sign JWTs (required) |
+| `DB_SSL` | Backend | SSL on | Set to `false` when `DATABASE_URL` points to a database without SSL |
+| `JWT_SECRET` | Backend | Required | Secret used to sign JWTs; at least 32 characters in production |
+| `CORS_ORIGIN` | Backend | any origin | Comma-separated frontend URLs allowed to call the API |
+| `ALLOW_TEST_MODES` | Backend | on in dev, off in prod | Enables `?strategy=naive\|optimistic` and `?anti_sniping=` for benchmarks |
 | `SETTLEMENT_SCHEDULER` | Backend | `on` | Set to `off` to disable automatic settlement |
 | `SETTLEMENT_INTERVAL_MS` | Backend | `15000` | Settlement sweep interval |
 | `VITE_API_URL` | Frontend | `http://localhost:5000/api` | Backend base URL |
+
+For production hosting (Render, Neon, Vercel), see [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
 ---
 
@@ -409,8 +437,8 @@ Base URL: `http://localhost:5000/api`. Endpoints marked *Authenticated* require 
 ### Authentication & Profile
 | Method | Endpoint | Description | Status Codes |
 | :--- | :--- | :--- | :--- |
-| `POST` | `/api/auth/register` | Register new user | `201`, `400`, `409` |
-| `POST` | `/api/auth/login` | Login user & issue JWT | `200`, `400`, `401` |
+| `POST` | `/api/auth/register` | Register new user | `201`, `400`, `409`, `429` |
+| `POST` | `/api/auth/login` | Login user & issue JWT | `200`, `400`, `401`, `429` |
 | `GET` | `/api/auth/me` | Current user (Authenticated) | `200`, `401`, `404` |
 | `GET` | `/api/profile` | Profile details & activity statistics (Authenticated) | `200`, `401`, `404` |
 | `PATCH` | `/api/profile` | Update name, email, phone, location, bio, avatar (Authenticated) | `200`, `400`, `401`, `409` |
@@ -424,7 +452,7 @@ Base URL: `http://localhost:5000/api`. Endpoints marked *Authenticated* require 
 | `POST` | `/api/auctions` | Create new auction (Authenticated) | `201`, `400`, `401` |
 | `PUT` | `/api/auctions/:id` | Update auction (Owner only) | `200`, `400`, `403`, `404`, `409` |
 | `DELETE` | `/api/auctions/:id` | Delete auction (Owner only) | `200`, `403`, `404`, `409` |
-| `POST` | `/api/auctions/:id/bids` | Place concurrency-safe bid (Authenticated, supports `Idempotency-Key`) | `201`, `400`, `403`, `404`, `409` |
+| `POST` | `/api/auctions/:id/bids` | Place concurrency-safe bid (Authenticated, supports `Idempotency-Key`) | `201`, `400`, `403`, `404`, `409`, `429` |
 | `GET` | `/api/auctions/:id/bids` | View bid history | `200` |
 | `GET` | `/api/my-auctions` | Auctions listed by the current user (Authenticated) | `200`, `401` |
 | `GET` | `/api/my-bids` | Auctions the current user has bid on (Authenticated) | `200`, `401` |
@@ -434,6 +462,7 @@ Base URL: `http://localhost:5000/api`. Endpoints marked *Authenticated* require 
 ### Real-Time & Notifications
 | Method | Endpoint | Description | Status Codes |
 | :--- | :--- | :--- | :--- |
+| `GET` | `/api/activity` | Latest accepted bids across all auctions (activity feed) | `200` |
 | `GET` | `/api/stream?token=<jwt>` | Server-Sent Events stream (`bid`, `closed`, `notification`) | `200` |
 | `GET` | `/api/notifications` | Latest notifications & unread count (Authenticated) | `200`, `401` |
 | `POST` | `/api/notifications/:id/read` | Mark a notification as read (Authenticated) | `200`, `401`, `404` |
@@ -472,18 +501,20 @@ bidzone-auction-platform/
 │   └── src/
 │       ├── controllers/    # auth, profile, auctions, bids, notifications
 │       ├── db/             # PostgreSQL connection pool
-│       ├── middleware/     # JWT authentication
+│       ├── middleware/     # JWT authentication, security headers, rate limiting
 │       ├── routes/         # REST and Server-Sent Events routes
 │       ├── services/       # Live events hub (LISTEN/NOTIFY → SSE), notification service
 │       ├── utils/          # JWT helpers
 │       ├── workers/        # Settlement worker and scheduler (advisory locks)
+│       ├── config.js       # Environment loading and production checks
 │       ├── app.js
 │       └── server.js
 ├── database/
 │   ├── schema.sql          # Complete schema (includes all migrations)
 │   ├── seed.sql            # Demo users and auctions
-│   └── migrations/         # 001 – 005
+│   └── migrations/         # 001 to 005
 ├── frontend/
+│   ├── public/             # Logo, favicon, app icons, web manifest
 │   └── src/
 │       ├── components/     # UI primitives, navigation, auction cards, notifications, search
 │       ├── context/        # Authentication, live events and theme providers
@@ -496,7 +527,9 @@ bidzone-auction-platform/
 │   ├── evidence/           # Recorded test and benchmark outputs
 │   └── screenshots/
 ├── .github/workflows/      # Continuous integration
-└── docker-compose.yml
+├── docker-compose.yml      # One-command local stack
+├── render.yaml             # Render blueprint (API + PostgreSQL)
+└── DEPLOYMENT.md           # Step-by-step production deployment guide
 ```
 
 ---
@@ -507,5 +540,26 @@ bidzone-auction-platform/
 * **SQL injection:** All queries use parameterized statements.
 * **Authorization:** Auction edits and deletions are restricted to the owner, sellers cannot bid on their own auctions, and manual settlement is restricted to the seller. Notification queries are always scoped to the authenticated user.
 * **Profile updates:** Only whitelisted fields are writable; email uniqueness is enforced; avatar URLs must use `http` or `https`; password changes require the current password.
+* **Input validation:** Request bodies and route parameters are validated against the database limits, so malformed input returns `400`/`404` instead of a server error. Auction edits and deletions lock the auction row, so they cannot overwrite a concurrent bid.
+* **Rate limiting:** Login attempts are limited to 10 per email per IP every 15 minutes, bid attempts to 120 per user per minute, and in production sign-ups to 20 per IP per hour.
+* **Production mode (`NODE_ENV=production`):** The API refuses to start without a strong `JWT_SECRET`, restricts browser access to `CORS_ORIGIN`, and disables the benchmark-only bidding modes so the row lock cannot be bypassed.
 * **Secrets management:** `.env` files are excluded from version control; only `.env.example` templates are committed.
 * **Known trade-offs:** JWTs are stored in `localStorage` for simplicity (an `httpOnly` cookie would offer stronger XSS protection). The SSE stream receives the token as a query parameter because the browser `EventSource` API cannot set request headers.
+
+---
+
+## 14. Deployment
+
+BidZone is deployed as three parts:
+
+| Part | Platform | Configuration |
+| :--- | :--- | :--- |
+| Database | Render PostgreSQL | Created by [`render.yaml`](render.yaml) |
+| Backend API | Render Web Service | `npm run migrate && npm start`, health check `/api/health` |
+| Frontend | Vercel | Root directory `frontend`, `VITE_API_URL` set to the API URL |
+
+1. **Backend and database:** In Render, choose *New → Blueprint* and select this repository. The blueprint creates the database, sets `DATABASE_URL`, generates a `JWT_SECRET` and applies the schema on every deploy.
+2. **Frontend:** Import the repository in Vercel with the root directory set to `frontend`, and set `VITE_API_URL` to `https://<your-api>.onrender.com/api`.
+3. **Connect them:** Set `CORS_ORIGIN` on the Render service to the Vercel URL.
+
+The full step-by-step guide, including demo data, verification and troubleshooting, is in [`DEPLOYMENT.md`](DEPLOYMENT.md).
