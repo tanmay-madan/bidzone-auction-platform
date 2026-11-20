@@ -1,4 +1,5 @@
 import pool from "../db/pool.js";
+import config from "../config.js";
 import { publishEvent } from "../services/events.js";
 import { createNotification, inr } from "../services/notifications.js";
 
@@ -39,6 +40,25 @@ async function afterAcceptedBid(db, { auction, auctionId, bidderId, amount, ends
   });
 }
 
+// NUMERIC(12,2): at most 9,999,999,999.99 and two decimal places.
+const MAX_AMOUNT = 9999999999.99;
+function invalidAmount(amount) {
+  if (!Number.isFinite(amount) || amount <= 0) return "amount must be a positive number.";
+  if (amount > MAX_AMOUNT) return "amount is too large.";
+  if (Math.abs(Math.round(amount * 100) - amount * 100) > 1e-6) {
+    return "amount can have at most 2 decimal places.";
+  }
+  return null;
+}
+
+// ?anti_sniping=true|false is a test switch; in production the rule is
+// always decided by the auction itself.
+function antiSnipingAllowed(req, totalDurationMs) {
+  if (config.allowTestModes && req.query.anti_sniping === "false") return false;
+  if (config.allowTestModes && req.query.anti_sniping === "true") return true;
+  return totalDurationMs > 2 * 60 * 1000;
+}
+
 async function safeRollback(client) {
   try {
     await client.query("ROLLBACK");
@@ -56,11 +76,12 @@ export async function placeBidNaive(req, res) {
   const amount = Number(req.body?.amount);
   const bidderId = req.user.id;
 
-  if (!Number.isFinite(amount) || amount <= 0) {
+  const amountError = invalidAmount(amount);
+  if (amountError) {
     return res.status(400).json({
       success: false,
       code: "VALIDATION_ERROR",
-      message: "amount must be a positive number.",
+      message: amountError,
     });
   }
 
@@ -134,11 +155,12 @@ export async function placeBidOptimistic(req, res) {
   const bidderId = req.user.id;
   const idemKey = req.headers["idempotency-key"] || null;
 
-  if (!Number.isFinite(amount) || amount <= 0) {
+  const amountError = invalidAmount(amount);
+  if (amountError) {
     return res.status(400).json({
       success: false,
       code: "VALIDATION_ERROR",
-      message: "amount must be a positive number.",
+      message: amountError,
     });
   }
 
@@ -165,7 +187,10 @@ export async function placeBidOptimistic(req, res) {
     // 1. Plain read WITHOUT locking the row
     const auctionResult = await pool.query(
       `SELECT id, seller_id, title, current_highest_bid, current_highest_bidder_id, min_increment,
-              starts_at, ends_at, status, version
+              starts_at, ends_at, status, version,
+              now() < starts_at AS not_started,
+              now() >= ends_at AS ended,
+              EXTRACT(EPOCH FROM (ends_at - now())) * 1000 AS remaining_ms
        FROM auctions WHERE id = $1`,
       [auctionId]
     );
@@ -179,11 +204,11 @@ export async function placeBidOptimistic(req, res) {
       return res.status(403).json({ success: false, code: "SELLER_CANNOT_BID", message: "You cannot bid on your own auction." });
     }
 
-    const now = new Date();
-    if (auction.status === "CLOSED" || now >= new Date(auction.ends_at)) {
+    // Time checks use the database clock, same as the pessimistic engine.
+    if (auction.status === "CLOSED" || auction.ended) {
       return res.status(409).json({ success: false, code: "AUCTION_CLOSED", message: "This auction has already ended." });
     }
-    if (now < new Date(auction.starts_at)) {
+    if (auction.not_started) {
       return res.status(409).json({ success: false, code: "AUCTION_NOT_STARTED", message: "This auction has not started yet." });
     }
 
@@ -209,11 +234,9 @@ export async function placeBidOptimistic(req, res) {
     }
 
     // Anti-sniping check: For standard auctions (duration > 2m), bids in the final 2 minutes extend closing time by 2m
-    const remainingMs = new Date(auction.ends_at).getTime() - Date.now();
+    const remainingMs = Number(auction.remaining_ms);
     const totalDurationMs = new Date(auction.ends_at).getTime() - new Date(auction.starts_at).getTime();
-    const allowAntiSniping = req.query.anti_sniping === 'false'
-      ? false
-      : (req.query.anti_sniping === 'true' || totalDurationMs > 2 * 60 * 1000);
+    const allowAntiSniping = antiSnipingAllowed(req, totalDurationMs);
 
     let extended = false;
     let endsAtClause = "";
@@ -309,7 +332,12 @@ export async function placeBidOptimistic(req, res) {
 // 3. PESSIMISTIC STRATEGY (SELECT ... FOR UPDATE) - Default Production Engine
 // -----------------------------------------------------------------------------
 export async function placeBid(req, res) {
-  const strategy = req.query.strategy || req.headers["x-bidding-strategy"] || "pessimistic";
+  // The naive and optimistic engines exist for the benchmark/evidence
+  // scripts. In production they are disabled, so a client can never
+  // bypass the row lock by adding ?strategy=naive.
+  const strategy = config.allowTestModes
+    ? req.query.strategy || req.headers["x-bidding-strategy"] || "pessimistic"
+    : "pessimistic";
   if (strategy === "naive") {
     return placeBidNaive(req, res);
   }
@@ -322,11 +350,12 @@ export async function placeBid(req, res) {
   const bidderId = req.user.id;
   const idemKey = req.headers["idempotency-key"] || null;
 
-  if (!Number.isFinite(amount) || amount <= 0) {
+  const amountError = invalidAmount(amount);
+  if (amountError) {
     return res.status(400).json({
       success: false,
       code: "VALIDATION_ERROR",
-      message: "amount must be a positive number.",
+      message: amountError,
     });
   }
 
@@ -367,6 +396,23 @@ export async function placeBid(req, res) {
       });
     }
 
+    // Re-check the idempotency key now that we hold the row lock. Two
+    // retries with the same key that arrived together both passed the
+    // fast check above; the second one waited on the lock and must now
+    // see the first one's stored result instead of bidding again.
+    if (idemKey) {
+      const replay = await client.query(
+        `SELECT status_code, response FROM idempotency_keys
+         WHERE idem_key = $1 AND bidder_id = $2 AND auction_id = $3`,
+        [idemKey, bidderId, auctionId]
+      );
+      if (replay.rows.length > 0) {
+        await safeRollback(client);
+        const { status_code, response } = replay.rows[0];
+        return res.status(status_code).json(response);
+      }
+    }
+
     if (auction.seller_id === bidderId) {
       await safeRollback(client);
       return res.status(403).json({
@@ -380,10 +426,11 @@ export async function placeBid(req, res) {
     const timeCheck = await client.query(
       `SELECT
          now() < $1::timestamptz AS not_started,
-         now() >= $2::timestamptz AS ended`,
+         now() >= $2::timestamptz AS ended,
+         EXTRACT(EPOCH FROM ($2::timestamptz - now())) * 1000 AS remaining_ms`,
       [auction.starts_at, auction.ends_at]
     );
-    const { not_started: notStarted, ended } = timeCheck.rows[0];
+    const { not_started: notStarted, ended, remaining_ms: remainingMsRaw } = timeCheck.rows[0];
 
     let rejectionCode = null;
     if (auction.status === "CLOSED" || ended) {
@@ -433,12 +480,11 @@ export async function placeBid(req, res) {
       return res.status(409).json(body);
     }
 
-    // Anti-sniping check under row lock: For standard auctions (duration > 2m), bids in the final 2 minutes extend closing time by 2m
-    const remainingMs = new Date(auction.ends_at).getTime() - Date.now();
+    // Anti-sniping check under row lock (database clock): for standard
+    // auctions (duration > 2m), bids in the final 2 minutes extend closing time by 2m
+    const remainingMs = Number(remainingMsRaw);
     const totalDurationMs = new Date(auction.ends_at).getTime() - new Date(auction.starts_at).getTime();
-    const allowAntiSniping = req.query.anti_sniping === 'false'
-      ? false
-      : (req.query.anti_sniping === 'true' || totalDurationMs > 2 * 60 * 1000);
+    const allowAntiSniping = antiSnipingAllowed(req, totalDurationMs);
 
     let extended = false;
     let finalEndsAt = auction.ends_at;
@@ -516,6 +562,26 @@ export async function placeBid(req, res) {
     });
   } finally {
     client.release();
+  }
+}
+
+// Latest accepted bids across all auctions, for the homepage activity
+// feed (bidder names are already public in each auction's history).
+export async function recentActivity(req, res) {
+  try {
+    const result = await pool.query(
+      `SELECT b.id, b.auction_id, a.title, u.name AS bidder_name, b.bidder_id, b.amount, b.created_at
+       FROM bids b
+       JOIN auctions a ON a.id = b.auction_id
+       JOIN users u ON u.id = b.bidder_id
+       WHERE b.status = 'ACCEPTED'
+       ORDER BY b.created_at DESC
+       LIMIT 8`
+    );
+    res.json({ activity: result.rows });
+  } catch (err) {
+    console.error("recentActivity error:", err.message);
+    res.status(500).json({ error: "SERVER_ERROR", message: "Could not load activity." });
   }
 }
 
