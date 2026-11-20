@@ -32,7 +32,11 @@ services:
       DB_USER: postgres
       DB_PASSWORD: postgres
       DB_NAME: bidzone
-      JWT_SECRET: bidzone_production_secret_key_100_marks
+      JWT_SECRET: ${JWT_SECRET:-bidzone_local_docker_secret_change_me_0123456789}
+      NODE_ENV: production
+      CORS_ORIGIN: http://localhost:5173
+      # Set to "true" to run the benchmark/evidence scripts against Docker
+      ALLOW_TEST_MODES: ${ALLOW_TEST_MODES:-false}
     ports:
       - "5000:5000"
     depends_on:

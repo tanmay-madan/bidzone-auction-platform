@@ -1,0 +1,36 @@
+# Render Blueprint: creates the BidZone API and a PostgreSQL database.
+# Render dashboard → New → Blueprint → select this repository.
+# The frontend is deployed separately (e.g. Vercel) — see DEPLOYMENT.md.
+databases:
+  - name: bidzone-db
+    plan: free
+    databaseName: bidzone
+    user: bidzone
+
+services:
+  - type: web
+    name: bidzone-api
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm ci --omit=dev
+    # Schema is idempotent, so it is safe to apply on every deploy.
+    startCommand: npm run migrate && npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "20"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: bidzone-db
+          property: connectionString
+      # Render's internal database URL does not use SSL.
+      - key: DB_SSL
+        value: "false"
+      - key: JWT_SECRET
+        generateValue: true
+      # Your frontend URL, e.g. https://bidzone.vercel.app (set after deploying it)
+      - key: CORS_ORIGIN
+        sync: false
