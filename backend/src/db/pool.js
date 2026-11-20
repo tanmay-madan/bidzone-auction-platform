@@ -13,7 +13,9 @@ const { Pool } = pg;
 export const dbConfig = process.env.DATABASE_URL
   ? {
       connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false },
+      // Hosted Postgres (Neon, Supabase, Render external URLs) needs SSL.
+      // Set DB_SSL=false for providers/internal networks without it.
+      ssl: process.env.DB_SSL === "false" ? false : { rejectUnauthorized: false },
     }
   : {
       host: process.env.DB_HOST || "localhost",

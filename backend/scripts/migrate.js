@@ -14,6 +14,9 @@ async function runMigration() {
     console.log("✓ Schema applied successfully!");
   } catch (err) {
     console.error("Migration failed:", err.message);
+    // Non-zero exit so deploy pipelines (and `npm run migrate && npm start`)
+    // stop instead of starting the API against a broken database.
+    process.exitCode = 1;
   } finally {
     await pool.end();
   }
