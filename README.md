@@ -5,16 +5,21 @@
 <h1 align="center">BidZone</h1>
 
 <p align="center"><b>High-Concurrency Real-Time Auction Platform</b><br/>Every bid lands. Exactly once.</p>
+<p align="center">
+  <a href="https://bidzone-auction-platform.vercel.app"><b>🔴 Live Demo</b></a> ·
+  Login: <code>demo@bidzone.local</code> / <code>password123</code>
+</p>
 
 <p align="center">
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Open%20BidZone-ff4d4d?style=flat&logo=vercel)](https://bidzone-auction-platform.vercel.app)
 [![BidZone Automated CI](https://github.com/tanmay-madan/bidzone-auction-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/tanmay-madan/bidzone-auction-platform/actions/workflows/ci.yml)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%2B-blue.svg)
 ![Node.js](https://img.shields.io/badge/Node.js-20%2B-green.svg)
 ![React](https://img.shields.io/badge/React-19-61dafb.svg)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ed.svg)
-![Render](https://img.shields.io/badge/API-Render-46e3b7.svg)
-![Vercel](https://img.shields.io/badge/Frontend-Vercel-000000.svg)
+[![Render](https://img.shields.io/badge/API-Render-46e3b7.svg)](https://bidzone-api.onrender.com/api/health)
+[![Vercel](https://img.shields.io/badge/Frontend-Vercel-000000.svg)](https://bidzone-auction-platform.vercel.app)
 
 </p>
 
